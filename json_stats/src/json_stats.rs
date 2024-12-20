@@ -115,6 +115,9 @@ struct LlgResult {
     #[serde(skip)]
     slow_mask_us_a: [usize; MASK_STEPS],
 
+    #[serde(skip)]
+    all_masks_us: Vec<usize>,
+
     #[serde(skip_serializing_if = "Option::is_none")]
     compile_error: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -217,6 +220,35 @@ fn json_sum(curr: &mut Value, v: &Value) {
     }
 }
 
+fn log_fraction_plot(times: &mut Vec<usize>) -> String {
+    times.sort();
+    let mut cutoff = 1;
+    let mult = 1.3;
+    let mut count = 0;
+    let mut csv = String::from("cutoff time,frac left\n");
+    let total = times.len() as f64;
+
+    for &t in times.iter() {
+        while t > cutoff {
+            csv.push_str(&format!(
+                "{:.3},{}\n",
+                cutoff as f64 / 1000.0,
+                (total - count as f64) / total
+            ));
+            cutoff = (cutoff as f64 * mult).floor() as usize + 1;
+        }
+        count += 1;
+    }
+
+    csv.push_str(&format!(
+        "{:.3},{}\n",
+        cutoff as f64 / 1000.0,
+        (total - count as f64) / total
+    ));
+
+    csv
+}
+
 impl TestEnv {
     fn run_llg_test_inner(
         &self,
@@ -243,6 +275,8 @@ impl TestEnv {
                 let m = parser.compute_mask()?; // .unwrap_or_else(|_| trie.alloc_token_set());
                 let us = t0.elapsed().as_micros() as usize;
                 let pstats = parser.last_step_stats();
+
+                stats.all_masks_us.push(us);
 
                 // && pstats.lexer_cost < 7 * us as u64
                 if self.cli.csv && us > 1000 {
@@ -635,6 +669,8 @@ fn main() {
     let mut histogram = MaskHistogram::default();
     let mut histogram_a = MaskHistogram::default();
     let mut llg_totals = json!({});
+    let mut all_masks_us = vec![];
+    let mut all_ttfm_us = vec![];
 
     for (file, s) in files.iter().zip(results.into_iter()) {
         all_stats.insert(file.clone(), s.clone());
@@ -690,6 +726,9 @@ fn main() {
 
             if llg.ttfm_us > 0 {
                 total.llg.num_parsers += 1;
+
+                all_ttfm_us.push(llg.ttfm_us);
+                all_masks_us.extend_from_slice(&llg.all_masks_us);
             }
 
             total.llg.ttfm_us += llg.ttfm_us;
@@ -757,6 +796,11 @@ fn main() {
     eprintln!("Total time: {}ms", t0.elapsed().as_millis());
 
     save_text_to_file("tmp/mask_histogram.csv", &histogram_csv);
+    save_text_to_file(
+        "tmp/llg_masks_us.csv",
+        &log_fraction_plot(&mut all_masks_us),
+    );
+    save_text_to_file("tmp/llg_ttfm_us.csv", &log_fraction_plot(&mut all_ttfm_us));
     save_json_to_file("tmp/test_total.json", &total);
     save_json_to_file("tmp/test_all_stats.json", &all_stats);
     save_json_to_file(

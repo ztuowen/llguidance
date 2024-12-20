@@ -26,10 +26,10 @@ def log_fraction_plot(times: list[int]):
     cutoff = 1
     mult = 1.3
     count = 0
-    csv = "cutoff time,count left\n"
+    csv = "cutoff time,frac left\n"
     total = len(times)
     for t in times:
-        if t > cutoff:
+        while t > cutoff:
             csv += f"{cutoff/1000.0},{(total - count)/total}\n"
             cutoff = int(cutoff * mult) + 1
         count += 1
