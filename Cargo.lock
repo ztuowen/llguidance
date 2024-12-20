@@ -1165,6 +1165,7 @@ dependencies = [
  "pyo3",
  "serde",
  "serde_json",
+ "toktrie_hf_tokenizers",
 ]
 
 [[package]]

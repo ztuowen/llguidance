@@ -8,10 +8,18 @@ class LLTokenizer:
 
     def __new__(
         cls,
-        tokenizer: TokenizerWrapper,
+        tokenizer: Union[str, TokenizerWrapper],
+        n_vocab: Optional[int] = None,
+        slices: Optional[List[str]] = None,
     ) -> "LLTokenizer":
         """
         Create a new tokenizer.
+
+        Args:
+            tokenizer: str or TokenizerWrapper - if str, it is the name or path to the HF tokenizers tokenizer; otherwise it is a TokenizerWrapper
+            n_vocab: int - override the size of the vocabulary
+            slices: List[str] - configuration for slicer optimization; pass [] to disable,
+                or None to use the default configuration
         """
 
     def greedy_tokenize(self, text: str) -> List[int]:

@@ -2,9 +2,14 @@ use std::fmt::Display;
 use std::{borrow::Cow, sync::Arc};
 
 use llguidance::api::{GrammarWithLexer, ParserLimits};
-use llguidance::toktrie::{self, InferenceCapabilities, TokRxInfo, TokTrie, TokenId, TokenizerEnv};
+use llguidance::earley::SlicedBiasComputer;
+use llguidance::toktrie::{
+    self, InferenceCapabilities, TokEnv, TokRxInfo, TokTrie, TokenId, TokenizerEnv,
+};
 use llguidance::{api::TopLevelGrammar, output::ParserOutput, TokenParser};
-use llguidance::{lark_to_llguidance, Constraint, GrammarBuilder, JsonCompileOptions, Logger};
+use llguidance::{
+    lark_to_llguidance, Constraint, GrammarBuilder, JsonCompileOptions, Logger, ParserFactory,
+};
 use pyo3::{exceptions::PyValueError, prelude::*};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -17,13 +22,17 @@ struct LLInterpreter {
     log_level: isize,
 }
 
-#[derive(Clone)]
-#[pyclass]
-struct LLTokenizer {
+struct PyTokenizer {
     tok_trie: Arc<toktrie::TokTrie>,
     tokenizer_fun: Py<PyAny>,
     #[allow(dead_code)]
     tok_bos: Option<u32>,
+}
+
+#[derive(Clone)]
+#[pyclass]
+struct LLTokenizer {
+    factory: Arc<ParserFactory>,
 }
 
 // This is the interface from llguidance to the LLM's.
@@ -37,7 +46,7 @@ impl LLInterpreter {
         enable_ff_tokens: Option<bool>,
         log_level: Option<isize>,
     ) -> PyResult<Self> {
-        let env = tokenizer.clone();
+        let fact = &tokenizer.factory;
         let arg: TopLevelGrammar = serde_json::from_str(llguidance_json).map_err(val_error)?;
         let log_level = log_level.unwrap_or(1);
         let inference_caps = InferenceCapabilities {
@@ -47,15 +56,16 @@ impl LLInterpreter {
             fork: false,
         };
         let logger = Logger::new(0, std::cmp::max(0, log_level) as u32);
-        let inner = TokenParser::from_llguidance_json(
-            Arc::new(env),
+        let mut inner = TokenParser::from_llguidance_json(
+            fact.tok_env().clone(),
             arg,
             logger,
             inference_caps,
             ParserLimits::default(),
-            vec![],
+            fact.extra_lexemes(),
         )
         .map_err(val_error)?;
+        fact.post_process_parser(&mut inner);
         let inner = Constraint::new(inner);
         Ok(LLInterpreter { inner, log_level })
     }
@@ -141,6 +151,77 @@ struct PyMidProcessResult {
 #[pymethods]
 impl LLTokenizer {
     #[new]
+    fn py_new(
+        tokenizer: Bound<'_, PyAny>,
+        n_vocab: Option<usize>,
+        slices: Option<Vec<String>>,
+    ) -> PyResult<Self> {
+        let tok_env: TokEnv = if let Some(tokenizer_str) = tokenizer.extract::<String>().ok() {
+            let tok = toktrie_hf_tokenizers::ByteTokenizerEnv::from_name(&tokenizer_str, n_vocab)
+                .map_err(val_error)?;
+            tok.to_env()
+        } else {
+            Arc::new(PyTokenizer::py_new(tokenizer)?)
+        };
+        let factory = ParserFactory::new(
+            &tok_env,
+            InferenceCapabilities::default(),
+            &slices.unwrap_or_else(|| SlicedBiasComputer::general_slices()),
+        )
+        .map_err(val_error)?;
+
+        Ok(LLTokenizer {
+            factory: Arc::new(factory),
+        })
+    }
+
+    fn tokenize_bytes(&self, utf8bytes: &[u8]) -> Vec<TokenId> {
+        self.factory.tok_env().tokenize_bytes(utf8bytes)
+    }
+
+    fn tokenize_str(&self, text: &str) -> Vec<TokenId> {
+        self.tokenize_bytes(text.as_bytes())
+    }
+
+    fn greedy_tokenize(&self, text: &str) -> Vec<u32> {
+        self.tok_trie().greedy_tokenize(text.as_bytes())
+    }
+
+    fn test_trace_tokens(&self, tokens: Vec<u32>) -> String {
+        self.tok_trie().test_trace_tokens(&tokens)
+    }
+
+    fn dbg_tokens(&self, tokens: Vec<u32>) -> String {
+        self.tok_trie().tokens_dbg(&tokens)
+    }
+
+    fn decode_str(&self, tokens: Vec<u32>) -> String {
+        self.tok_trie().decode_str(&tokens)
+    }
+
+    fn decode_bytes(&self, tokens: Vec<u32>) -> Cow<[u8]> {
+        let r = self.tok_trie().decode(&tokens);
+        Cow::Owned(r)
+    }
+
+    #[getter]
+    fn vocab_size(&self) -> usize {
+        self.tok_trie().vocab_size() as usize
+    }
+
+    #[getter]
+    fn eos_token(&self) -> u32 {
+        self.tok_trie().eos_token()
+    }
+}
+
+impl LLTokenizer {
+    fn tok_trie(&self) -> &toktrie::TokTrie {
+        self.factory.tok_env().tok_trie()
+    }
+}
+
+impl PyTokenizer {
     fn py_new(tokenizer: Bound<'_, PyAny>) -> PyResult<Self> {
         let is_tokenizer = tokenizer
             .getattr("is_tokenizer_wrapper")
@@ -178,11 +259,17 @@ impl LLTokenizer {
         let info = TokRxInfo::new(tokens.len() as u32, tok_eos);
 
         let tok_trie = TokTrie::from(&info, &tokens);
-        Ok(LLTokenizer {
+        Ok(PyTokenizer {
             tok_trie: Arc::new(tok_trie),
             tokenizer_fun: tokenizer.into(),
             tok_bos,
         })
+    }
+}
+
+impl TokenizerEnv for PyTokenizer {
+    fn tok_trie(&self) -> &toktrie::TokTrie {
+        &self.tok_trie
     }
 
     fn tokenize_bytes(&self, utf8bytes: &[u8]) -> Vec<TokenId> {
@@ -192,51 +279,6 @@ impl LLTokenizer {
                 r.extract::<Vec<TokenId>>(py).unwrap()
             })
         })
-    }
-
-    fn tokenize_str(&self, text: &str) -> Vec<TokenId> {
-        self.tokenize_bytes(text.as_bytes())
-    }
-
-    fn greedy_tokenize(&self, text: &str) -> Vec<u32> {
-        self.tok_trie.greedy_tokenize(text.as_bytes())
-    }
-
-    fn test_trace_tokens(&self, tokens: Vec<u32>) -> String {
-        self.tok_trie.test_trace_tokens(&tokens)
-    }
-
-    fn dbg_tokens(&self, tokens: Vec<u32>) -> String {
-        self.tok_trie.tokens_dbg(&tokens)
-    }
-
-    fn decode_str(&self, tokens: Vec<u32>) -> String {
-        self.tok_trie.decode_str(&tokens)
-    }
-
-    fn decode_bytes(&self, tokens: Vec<u32>) -> Cow<[u8]> {
-        let r = self.tok_trie.decode(&tokens);
-        Cow::Owned(r)
-    }
-
-    #[getter]
-    fn vocab_size(&self) -> usize {
-        self.tok_trie.vocab_size() as usize
-    }
-
-    #[getter]
-    fn eos_token(&self) -> u32 {
-        self.tok_trie.eos_token()
-    }
-}
-
-impl TokenizerEnv for LLTokenizer {
-    fn tok_trie(&self) -> &toktrie::TokTrie {
-        &self.tok_trie
-    }
-
-    fn tokenize_bytes(&self, s: &[u8]) -> Vec<TokenId> {
-        self.tokenize_bytes(s)
     }
 }
 
