@@ -48,6 +48,7 @@ The library implements a context-free grammar parser using Earley’s algorithm 
 
 Recently released [XGrammar](https://github.com/mlc-ai/xgrammar) follows an approach similar to llama.cpp (explicit stack-based, character-level parser) with additional pre-computation of certain token masks, similar to Outlines. The pre-computation often runs into seconds, and sometimes minutes. If the pre-computation works well for a given input, the masks are computed quickly (under 50us in half of masks we tested), however if it doesn't fit the particular input, 
 the mask computation times can run into seconds.
+Avarage mask computation time, for masks under 10ms was 277us, however over 3% of masks took longer than 10ms (with avarage time of over 1s).
 
 In llguidance, the full mask computation for a typical JSON schema takes about 1.5ms (for 128k tokenizer).
 However, very often the ["slicer" optimization](./docs/optimizations.md) applies,

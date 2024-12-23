@@ -115,8 +115,8 @@ struct LlgResult {
     #[serde(skip)]
     slow_mask_us_a: [usize; MASK_STEPS],
 
-    #[serde(skip)]
-    all_masks_us: Vec<usize>,
+    // #[serde(skip)]
+    all_mask_us: Vec<usize>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     compile_error: Option<String>,
@@ -276,7 +276,7 @@ impl TestEnv {
                 let us = t0.elapsed().as_micros() as usize;
                 let pstats = parser.last_step_stats();
 
-                stats.all_masks_us.push(us);
+                stats.all_mask_us.push(us);
 
                 // && pstats.lexer_cost < 7 * us as u64
                 if self.cli.csv && us > 1000 {
@@ -728,7 +728,7 @@ fn main() {
                 total.llg.num_parsers += 1;
 
                 all_ttfm_us.push(llg.ttfm_us);
-                all_masks_us.extend_from_slice(&llg.all_masks_us);
+                all_masks_us.extend_from_slice(&llg.all_mask_us);
             }
 
             total.llg.ttfm_us += llg.ttfm_us;
