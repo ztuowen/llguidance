@@ -51,15 +51,15 @@ def process_file(files: List[str]):
             "message": str(e)
         }
 
-files = []
+file_name = []
 for arg in sys.argv[1:]:
     if arg.endswith(".json"):
-        files.append(arg)
+        file_name.append(arg)
     else:
-        files.extend(glob.glob(arg + "/*.json"))
-print(len(files), file=sys.stderr)
+        file_name.extend(glob.glob(arg + "/*.json"))
+print(len(file_name), file=sys.stderr)
 missing_files = []
-for f in files:
+for f in file_name:
     file_base = f.split("/")[-1]
     output_name = f"{output_base}/{file_base}"
     if not os.path.exists(output_name):
@@ -82,16 +82,10 @@ cnt = 0
 with concurrent.futures.ThreadPoolExecutor(max_workers=40) as executor:
     futures = {executor.submit(process_file, f): f for f in chunks}
     for future in concurrent.futures.as_completed(futures):
-        files = futures[future]
+        file_name = futures[future]
         try:
             r = future.result()
-            cnt += len(files)
-            print(cnt)
-            rs = json.dumps(r)
-            with open(log_file, "a") as f:
-                f.write(f"FILES: {files}\n{rs}\n")
+            print(file_name)
             # print(f"OK: {files}")
         except Exception as e:
-            with open(log_file, "a") as f:
-                f.write(f"ERROR {files}: {repr(e)}")
-            print(f"ERROR: {files}", repr(e))
+            print(f"ERROR: {file_name}", repr(e))

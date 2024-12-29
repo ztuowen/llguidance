@@ -47,6 +47,9 @@ pub struct CliOptions {
     llg_no_forcing: bool,
 
     #[arg(long)]
+    llg_test_slicer: bool,
+
+    #[arg(long)]
     csv: bool,
 
     #[arg(long)]
@@ -114,6 +117,9 @@ struct LlgResult {
     slow_mask_count_a: [usize; MASK_STEPS],
     #[serde(skip)]
     slow_mask_us_a: [usize; MASK_STEPS],
+
+    // #[serde(skip)]
+    all_mask_us: Vec<usize>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     compile_error: Option<String>,
@@ -193,6 +199,7 @@ struct TestEnv {
     cli: Arc<CliOptions>,
     tok_env: TokEnv,
     factory: Arc<ParserFactory>,
+    ref_factory: Arc<ParserFactory>,
     file_name: String,
 }
 
@@ -217,11 +224,41 @@ fn json_sum(curr: &mut Value, v: &Value) {
     }
 }
 
+fn log_fraction_plot(times: &mut Vec<usize>) -> String {
+    times.sort();
+    let mut cutoff = 1;
+    let mult = 1.3;
+    let mut count = 0;
+    let mut csv = String::from("cutoff time,frac left\n");
+    let total = times.len() as f64;
+
+    for &t in times.iter() {
+        while t > cutoff {
+            csv.push_str(&format!(
+                "{:.3},{}\n",
+                cutoff as f64 / 1000.0,
+                (total - count as f64) / total
+            ));
+            cutoff = (cutoff as f64 * mult).floor() as usize + 1;
+        }
+        count += 1;
+    }
+
+    csv.push_str(&format!(
+        "{:.3},{}\n",
+        cutoff as f64 / 1000.0,
+        (total - count as f64) / total
+    ));
+
+    csv
+}
+
 impl TestEnv {
     fn run_llg_test_inner(
         &self,
         stats: &mut LlgResult,
         parser: &mut TokenParser,
+        mut ref_parser: Option<&mut TokenParser>,
         t: &JsonTestSequence,
     ) -> Result<()> {
         let dstr = serde_json::to_string(&t.data).unwrap();
@@ -243,6 +280,25 @@ impl TestEnv {
                 let m = parser.compute_mask()?; // .unwrap_or_else(|_| trie.alloc_token_set());
                 let us = t0.elapsed().as_micros() as usize;
                 let pstats = parser.last_step_stats();
+
+                if let Some(ref_parser) = &mut ref_parser {
+                    let m2 = ref_parser.compute_mask()?;
+                    if m != m2 {
+                        let mut missing_slicer = m2.clone();
+                        missing_slicer.sub(&m);
+                        let mut missing_parser = m.clone();
+                        missing_parser.sub(&m2);
+                        eprintln!(
+                            "{}:\n{}\n{}",
+                            tidx,
+                            trie.token_set_dbg(&missing_slicer),
+                            trie.token_set_dbg(&missing_parser)
+                        );
+                        panic!("mismatch");
+                    }
+                }
+
+                stats.all_mask_us.push(us);
 
                 // && pstats.lexer_cost < 7 * us as u64
                 if self.cli.csv && us > 1000 {
@@ -311,6 +367,11 @@ impl TestEnv {
             }
             let bt = parser.consume_token(token)?;
             assert!(bt == 0);
+
+            if let Some(ref_parser) = &mut ref_parser {
+                let bt = ref_parser.consume_token(token)?;
+                assert!(bt == 0);
+            }
         }
 
         if parser.is_accepting() {
@@ -335,6 +396,7 @@ impl TestEnv {
         &self,
         stats: &mut LlgResult,
         parser: &TokenParser,
+        ref_parser: Option<&TokenParser>,
         t: &JsonTestSequence,
     ) -> Result<()> {
         // if self.cli.llg_masks && !t.valid {
@@ -344,7 +406,10 @@ impl TestEnv {
         let mut parser = parser.deep_clone();
         parser.start_without_prompt();
 
-        let r = self.run_llg_test_inner(stats, &mut parser, t);
+        let mut ref_parser = ref_parser.map(|p| p.deep_clone());
+        ref_parser.as_mut().map(|p| p.start_without_prompt());
+
+        let r = self.run_llg_test_inner(stats, &mut parser, ref_parser.as_mut(), t);
 
         let m = parser.parser.metrics_mut();
         stats.slicer_leftover_us += m.slicer_leftover_us;
@@ -376,6 +441,12 @@ impl TestEnv {
             schema.grammars[0].no_forcing = true;
         }
 
+        let ref_parser = if self.cli.llg_test_slicer {
+            Some(self.ref_factory.create_parser(schema.clone()))
+        } else {
+            None
+        };
+
         let parser = self.factory.create_parser(schema);
 
         let parser = match parser {
@@ -398,10 +469,12 @@ impl TestEnv {
 
         res.lexer_stats = parser.parser.lexer_stats();
 
+        let ref_parser = ref_parser.map(|p| p.unwrap());
+
         if self.cli.llg_test {
             for (idx, t) in test_file.tests.iter().enumerate() {
                 let t0 = std::time::Instant::now();
-                if let Err(e) = self.run_llg_test(&mut res, &parser, t) {
+                if let Err(e) = self.run_llg_test(&mut res, &parser, ref_parser.as_ref(), t) {
                     res.validation_error = Some(format!("test #{idx}: {e}"));
                     limit_string(&mut res.validation_error);
                 } else {
@@ -592,19 +665,21 @@ fn main() {
         slices.clear();
     }
 
-    let mut factory = ParserFactory::new(
-        &tok_env,
-        InferenceCapabilities {
-            ff_tokens: false,
-            backtrack: false,
-            conditional_ff_tokens: false,
-            fork: false,
-        },
-        &slices,
-    )
-    .unwrap();
+    let caps = InferenceCapabilities {
+        ff_tokens: false,
+        backtrack: false,
+        conditional_ff_tokens: false,
+        fork: false,
+    };
+
+    let mut factory = ParserFactory::new(&tok_env, caps.clone(), &slices).unwrap();
     factory.quiet();
+
+    let mut ref_factory = ParserFactory::new(&tok_env, caps.clone(), &vec![]).unwrap();
+    ref_factory.quiet();
+
     let factory = Arc::new(factory);
+    let ref_factory = Arc::new(ref_factory);
 
     save_text_to_file("tmp/slices.txt", &factory.slicer().stats(false));
     save_text_to_file("tmp/slices_tokens.txt", &factory.slicer().stats(true));
@@ -615,6 +690,7 @@ fn main() {
         let env = TestEnv {
             tok_env: tok_env.clone(),
             factory: factory.clone(),
+            ref_factory: ref_factory.clone(),
             file_name: file.to_string(),
             cli: options.clone(),
         };
@@ -635,6 +711,8 @@ fn main() {
     let mut histogram = MaskHistogram::default();
     let mut histogram_a = MaskHistogram::default();
     let mut llg_totals = json!({});
+    let mut all_masks_us = vec![];
+    let mut all_ttfm_us = vec![];
 
     for (file, s) in files.iter().zip(results.into_iter()) {
         all_stats.insert(file.clone(), s.clone());
@@ -690,6 +768,9 @@ fn main() {
 
             if llg.ttfm_us > 0 {
                 total.llg.num_parsers += 1;
+
+                all_ttfm_us.push(llg.ttfm_us);
+                all_masks_us.extend_from_slice(&llg.all_mask_us);
             }
 
             total.llg.ttfm_us += llg.ttfm_us;
@@ -757,6 +838,11 @@ fn main() {
     eprintln!("Total time: {}ms", t0.elapsed().as_millis());
 
     save_text_to_file("tmp/mask_histogram.csv", &histogram_csv);
+    save_text_to_file(
+        "tmp/llg_masks_us.csv",
+        &log_fraction_plot(&mut all_masks_us),
+    );
+    save_text_to_file("tmp/llg_ttfm_us.csv", &log_fraction_plot(&mut all_ttfm_us));
     save_json_to_file("tmp/test_total.json", &total);
     save_json_to_file("tmp/test_all_stats.json", &all_stats);
     save_json_to_file(

@@ -253,7 +253,17 @@ impl Compiler {
         }
     }
 
-    fn process_any_of(&mut self, options: Vec<Schema>) -> Result<NodeRef> {
+    fn process_any_of(&mut self, mut options: Vec<Schema>) -> Result<NodeRef> {
+        let mut consts = vec![];
+        options.retain(|schema| match schema.const_compile() {
+            Some(c) => {
+                let id = self.builder.regex.add_node(c);
+                consts.push(id);
+                false
+            }
+            None => true,
+        });
+
         let mut nodes = vec![];
         let mut errors = vec![];
         for option in options.into_iter() {
@@ -265,6 +275,13 @@ impl Compiler {
                 },
             }
         }
+
+        if !consts.is_empty() {
+            let rx = self.builder.regex.or(consts);
+            let lex = self.builder.lexeme(RegexSpec::RegexId(rx), false);
+            nodes.push(lex);
+        }
+
         if !nodes.is_empty() {
             Ok(self.builder.select(&nodes))
         } else if let Some(e) = errors.pop() {

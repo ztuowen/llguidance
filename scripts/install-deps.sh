@@ -2,7 +2,7 @@
 
 # installing guidance for deps
 pip install pytest guidance huggingface_hub tokenizers jsonschema maturin[zig] \
-    torch transformers bitsandbytes ipython
+    torch transformers bitsandbytes ipython psutil
 pip uninstall -y guidance
 
 # print out versions
