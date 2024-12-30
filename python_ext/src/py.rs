@@ -156,10 +156,14 @@ impl LLTokenizer {
         n_vocab: Option<usize>,
         slices: Option<Vec<String>>,
     ) -> PyResult<Self> {
-        let tok_env: TokEnv = if let Some(tokenizer_str) = tokenizer.extract::<String>().ok() {
-            let tok = toktrie_hf_tokenizers::ByteTokenizerEnv::from_name(&tokenizer_str, n_vocab)
-                .map_err(val_error)?;
-            tok.to_env()
+        let tok_env: TokEnv = if let Some(_tokenizer_str) = tokenizer.extract::<String>().ok() {
+            let _ = n_vocab;
+            return Err(PyValueError::new_err(
+                "Expecting a TokenizerWrapper() class, not a string",
+            ));
+            // let tok = toktrie_hf_tokenizers::ByteTokenizerEnv::from_name(&tokenizer_str, n_vocab)
+            //     .map_err(val_error)?;
+            // tok.to_env()
         } else {
             Arc::new(PyTokenizer::py_new(tokenizer)?)
         };
