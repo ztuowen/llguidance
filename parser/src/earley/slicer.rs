@@ -88,6 +88,7 @@ impl SlicedBiasComputer {
                         tokens.push(vec![]);
                     }
                 }
+                mask.trim_trailing_zeros();
             }
 
             let entry = TokenizerSlice {

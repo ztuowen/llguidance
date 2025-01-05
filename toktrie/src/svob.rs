@@ -289,9 +289,20 @@ impl SimpleVob {
     }
 
     pub fn or(&mut self, other: &SimpleVob) {
-        assert_eq!(self.size, other.size);
+        assert!(self.size >= other.size);
         for (idx, v) in self.data.iter_mut().zip(other.data.iter()) {
             *idx |= *v;
+        }
+    }
+
+    pub fn trim_trailing_zeros(&mut self) {
+        let mut idx = self.data.len();
+        while idx > 0 && self.data[idx - 1] == 0 {
+            idx -= 1;
+        }
+        if self.data.len() != idx {
+            self.data.truncate(idx);
+            self.size = self.data.len() * BITS;
         }
     }
 
