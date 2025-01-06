@@ -4,8 +4,9 @@ use hashbrown::HashMap;
 use indexmap::IndexMap;
 use serde_json::{json, Value};
 
-use super::numeric::{rx_float_range, rx_int_range};
+use super::numeric::{check_number_bounds, rx_float_range, rx_int_range, Decimal};
 use super::schema::{build_schema, Schema};
+
 use crate::{
     api::{GrammarWithLexer, RegexSpec, TopLevelGrammar},
     GrammarBuilder, NodeRef,
@@ -39,40 +40,6 @@ impl std::fmt::Display for UnsatisfiableSchemaError {
 }
 
 const CHAR_REGEX: &str = r#"(\\([\"\\\/bfnrt]|u[a-fA-F0-9]{4})|[^\"\\\x00-\x1F\x7F])"#;
-
-fn check_number_bounds(
-    minimum: Option<f64>,
-    maximum: Option<f64>,
-    exclusive_minimum: bool,
-    exclusive_maximum: bool,
-) -> Result<()> {
-    if let (Some(min), Some(max)) = (minimum, maximum) {
-        if min > max {
-            return Err(anyhow!(UnsatisfiableSchemaError {
-                message: format!("minimum ({}) is greater than maximum ({})", min, max),
-            }));
-        }
-        if min == max && (exclusive_minimum || exclusive_maximum) {
-            let minimum_repr = if exclusive_minimum {
-                "exclusiveMinimum"
-            } else {
-                "minimum"
-            };
-            let maximum_repr = if exclusive_maximum {
-                "exclusiveMaximum"
-            } else {
-                "maximum"
-            };
-            return Err(anyhow!(UnsatisfiableSchemaError {
-                message: format!(
-                    "{} ({}) is equal to {} ({})",
-                    minimum_repr, min, maximum_repr, max
-                ),
-            }));
-        }
-    }
-    Ok(())
-}
 
 struct Compiler {
     builder: GrammarBuilder,
@@ -272,8 +239,21 @@ impl Compiler {
         maximum: Option<f64>,
         exclusive_minimum: bool,
         exclusive_maximum: bool,
+        multiple_of: Option<Decimal>,
     ) -> Result<RegexAst> {
-        check_number_bounds(minimum, maximum, exclusive_minimum, exclusive_maximum)?;
+        check_number_bounds(
+            minimum,
+            maximum,
+            exclusive_minimum,
+            exclusive_maximum,
+            false,
+            multiple_of.clone(),
+        )
+        .map_err(|e| {
+            anyhow!(UnsatisfiableSchemaError {
+                message: e.to_string(),
+            })
+        })?;
         let minimum = match (minimum, exclusive_minimum) {
             (Some(min_val), true) => {
                 if min_val.fract() != 0.0 {
@@ -298,14 +278,17 @@ impl Compiler {
             _ => None,
         }
         .map(|val| val as i64);
-        // TODO: handle errors in rx_int_range; currently it just panics
         let rx = rx_int_range(minimum, maximum).with_context(|| {
             format!(
                 "Failed to generate regex for integer range: min={:?}, max={:?}",
                 minimum, maximum
             )
         })?;
-        Ok(RegexAst::Regex(rx))
+        let mut ast = RegexAst::Regex(rx);
+        if let Some(d) = multiple_of {
+            ast = RegexAst::And(vec![ast, RegexAst::MultipleOf(d.coef, d.exp)]);
+        }
+        Ok(ast)
     }
 
     fn json_number(
@@ -314,8 +297,21 @@ impl Compiler {
         maximum: Option<f64>,
         exclusive_minimum: bool,
         exclusive_maximum: bool,
+        multiple_of: Option<Decimal>,
     ) -> Result<RegexAst> {
-        check_number_bounds(minimum, maximum, exclusive_minimum, exclusive_maximum)?;
+        check_number_bounds(
+            minimum,
+            maximum,
+            exclusive_minimum,
+            exclusive_maximum,
+            false,
+            multiple_of.clone(),
+        )
+        .map_err(|e| {
+            anyhow!(UnsatisfiableSchemaError {
+                message: e.to_string(),
+            })
+        })?;
         let rx = rx_float_range(minimum, maximum, !exclusive_minimum, !exclusive_maximum)
             .with_context(|| {
                 format!(
@@ -323,7 +319,11 @@ impl Compiler {
                     minimum, maximum
                 )
             })?;
-        Ok(RegexAst::Regex(rx))
+        let mut ast = RegexAst::Regex(rx);
+        if let Some(d) = multiple_of {
+            ast = RegexAst::And(vec![ast, RegexAst::MultipleOf(d.coef, d.exp)]);
+        }
+        Ok(ast)
     }
 
     fn ast_lexeme(&mut self, ast: RegexAst) -> Result<NodeRef> {
@@ -352,7 +352,7 @@ impl Compiler {
         cache!(self.any_cache, {
             let json_any = self.builder.placeholder();
             self.any_cache = Some(json_any); // avoid infinite recursion
-            let num = self.json_number(None, None, false, false).unwrap();
+            let num = self.json_number(None, None, false, false, None).unwrap();
             let options = vec![
                 self.builder.string("null"),
                 self.builder.lexeme(mk_regex(r"true|false")),
@@ -528,6 +528,7 @@ impl Compiler {
                 exclusive_minimum,
                 exclusive_maximum,
                 integer,
+                multiple_of,
             } => {
                 let (minimum, exclusive_minimum) = match (minimum, exclusive_minimum) {
                     (Some(min), Some(xmin)) => {
@@ -554,9 +555,21 @@ impl Compiler {
                     (None, None) => (None, false),
                 };
                 Some(if *integer {
-                    self.json_int(minimum, maximum, exclusive_minimum, exclusive_maximum)?
+                    self.json_int(
+                        minimum,
+                        maximum,
+                        exclusive_minimum,
+                        exclusive_maximum,
+                        multiple_of.clone(),
+                    )?
                 } else {
-                    self.json_number(minimum, maximum, exclusive_minimum, exclusive_maximum)?
+                    self.json_number(
+                        minimum,
+                        maximum,
+                        exclusive_minimum,
+                        exclusive_maximum,
+                        multiple_of.clone(),
+                    )?
                 })
             }
 
@@ -791,7 +804,7 @@ fn always_non_empty(ast: &RegexAst) -> bool {
         | RegexAst::ByteLiteral(_)
         | RegexAst::Byte(_)
         | RegexAst::ByteSet(_)
-        | RegexAst::MultipleOf(_) => true,
+        | RegexAst::MultipleOf(_, _) => true,
 
         RegexAst::And(_)
         | RegexAst::Not(_)
