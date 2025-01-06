@@ -1,4 +1,8 @@
-use std::{fmt::Debug, hash::Hash, ops::Index};
+use std::{
+    fmt::Debug,
+    hash::Hash,
+    ops::{Index, Range},
+};
 
 pub type TokenId = u32;
 
@@ -213,8 +217,8 @@ impl SimpleVob {
     }
 
     pub fn write_to(&self, buf: &mut [u8]) {
-        assert!(buf.len() == self.data.len() * 4);
-        bytemuck::cast_slice_mut(buf).copy_from_slice(&self.data);
+        assert!(buf.len() <= self.data.len() * (BITS / 8));
+        buf.copy_from_slice(&bytemuck::cast_slice(&self.data)[..buf.len()]);
     }
 
     #[inline(always)]
@@ -235,6 +239,30 @@ impl SimpleVob {
             self.data[byte_idx] |= 1 << bit_idx;
         } else {
             self.data[byte_idx] &= !(1 << bit_idx);
+        }
+    }
+
+    pub fn allow_range(&mut self, range: Range<TokenId>) {
+        assert!(range.end <= self.size as TokenId);
+        let start = range.start as usize;
+        let end = range.end as usize - 1;
+        if start >= end + 1 {
+            return;
+        }
+        let start_word = start / BITS;
+        let end_word = end / BITS;
+        let start_mask = !0u32 << (start % BITS);
+        let end_bit = end % BITS;
+        let end_mask = !0u32 >> (BITS - 1 - end_bit);
+        if start_word == end_word {
+            let mask = start_mask & end_mask;
+            self.data[start_word] |= mask;
+        } else {
+            self.data[start_word] |= start_mask;
+            for w in (start_word + 1)..end_word {
+                self.data[w] = !0u32;
+            }
+            self.data[end_word] |= end_mask;
         }
     }
 
