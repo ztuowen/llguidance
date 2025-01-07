@@ -3,7 +3,6 @@
 
 use std::sync::Arc;
 
-use anyhow::Result;
 use bytemuck_derive::{Pod, Zeroable};
 
 use crate::{bytes::to_hex_string, SimpleVob};
@@ -126,7 +125,8 @@ pub trait TokenizerEnv: Send {
                 idx += normal_len;
             }
             idx += 1; // skip ff
-            if idx + 3 < s.len() && s[idx] == '<' as u8 {
+            if idx + 2 < s.len() && s[idx] == '<' as u8 {
+                // tokenize \xff<foobar> as special token <foobar>
                 let spec_len = s[idx..std::cmp::min(s.len(), idx + 100)]
                     .iter()
                     .position(|&x| x == '>' as u8);
@@ -136,6 +136,22 @@ pub trait TokenizerEnv: Send {
                     if let Some(id) = trie.token_id_at_bytes(spec_token) {
                         result.push(id);
                         idx += spec_len;
+                    }
+                }
+            } else if idx + 2 < s.len() && s[idx] == '[' as u8 {
+                // tokenize \xff[1234] as token 1234
+                let spec_len = s[idx..std::cmp::min(s.len(), idx + 20)]
+                    .iter()
+                    .position(|&x| x == ']' as u8);
+                if let Some(spec_len) = spec_len {
+                    let inner_bytes = &s[idx + 1..idx + spec_len];
+                    if let Ok(inner_str) = std::str::from_utf8(inner_bytes) {
+                        if let Ok(id) = u32::from_str_radix(inner_str, 10) {
+                            if id < trie.vocab_size() as u32 {
+                                result.push(id as TokenId);
+                                idx += spec_len + 1;
+                            }
+                        }
                     }
                 }
             }
@@ -381,6 +397,8 @@ impl TokTrie {
                 let s = self.token_dbg(*t);
                 if s.starts_with("\"") {
                     self.token_str(*t)
+                } else if s.starts_with("<") {
+                    s
                 } else {
                     format!("≺{}≻", s)
                 }
@@ -446,6 +464,22 @@ impl TokTrie {
         String::from_utf8_lossy(self.token(idx)).to_string()
     }
 
+    pub fn token_len(&self, idx: u32) -> usize {
+        let t = self.token(idx);
+        if t.len() == 0 || t[0] == TokTrie::SPECIAL_TOKEN_MARKER {
+            let mut idx = idx;
+            let mut len = 1;
+            while idx >= 10 {
+                idx /= 10;
+                len += 1;
+            }
+            // token 1234 -> \xff [ 1234 ]
+            len + 3
+        } else {
+            t.len()
+        }
+    }
+
     pub fn token(&self, idx: u32) -> &[u8] {
         if idx >= self.token_offsets.len() as u32 {
             return &[];
@@ -468,7 +502,13 @@ impl TokTrie {
         let mut res = Vec::new();
         res.reserve(tokens.len() * 6 + 32); // approximately
         for &tok in tokens {
-            res.extend_from_slice(self.token(tok));
+            let t = self.token(tok);
+            if t.len() == 0 || t[0] == TokTrie::SPECIAL_TOKEN_MARKER {
+                res.push(TokTrie::SPECIAL_TOKEN_MARKER);
+                res.extend_from_slice(format!("[{}]", tok).as_bytes());
+            } else {
+                res.extend_from_slice(t);
+            }
         }
         res
     }
@@ -720,52 +760,14 @@ impl TokTrie {
         self.add_bias(r, logits, start);
     }
 
-    pub fn append_tokens(&self, r: &mut impl Recognizer, ts: &[TokenId]) -> Result<()> {
-        for t in ts {
-            self.append_token(r, *t)?;
-        }
-        Ok(())
-    }
-
-    pub fn append_token(&self, r: &mut impl Recognizer, t: TokenId) -> Result<()> {
-        // println!("append_token: {}", self.token_dbg(t));
-        let bytes = self.token(t);
-        for &byte in bytes {
-            if !r.try_push_byte(byte) {
-                r.collapse();
-                return Err(anyhow::anyhow!("byte {:?} not allowed", byte as char));
-            }
-        }
-        r.collapse();
-        Ok(())
-    }
-
-    pub fn token_allowed(&self, r: &mut impl Recognizer, t: TokenId) -> bool {
-        let bytes = self.token(t);
-        let mut num = 0;
-        let mut ok = true;
-        r.trie_started("token_allowed");
-        for &byte in bytes {
-            if r.try_push_byte(byte) {
-                num += 1;
-            } else {
-                ok = false;
-                break;
-            }
-        }
-        r.pop_bytes(num);
-        r.trie_finished();
-        ok
-    }
-
     /// Return how many tokens and bytes need to chopped off tokens,
     /// so that we do not limit all possible future tokenizations matching the recognizer.
     pub fn chop_tokens(&self, r: &mut impl Recognizer, tokens: &[TokenId]) -> (usize, usize) {
         let mut suff = Vec::new();
         let mut chop_tokens = 0;
         let mut chop_bytes = 0;
-        for (idx, t) in tokens.iter().rev().enumerate() {
-            suff.splice(0..0, self.token(*t).iter().cloned());
+        for (idx, &t) in tokens.iter().rev().enumerate() {
+            suff.splice(0..0, self.decode_raw(&[t]));
             if suff.len() > self.max_token_len() {
                 break;
             }

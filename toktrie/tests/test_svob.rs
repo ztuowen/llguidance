@@ -9,7 +9,7 @@ fn bools_to_bin_string(bits: &[bool]) -> String {
 #[test]
 fn test_allow_range_empty() {
     let mut v = SimpleVob::alloc(32);
-    v.allow_range(10..10); // no effect
+    v.allow_range(10..=9); // no effect
     assert_eq!(v.num_set(), 0);
     assert_eq!(v.to_bin_string(), "00000000000000000000000000000000");
 }
@@ -17,7 +17,7 @@ fn test_allow_range_empty() {
 #[test]
 fn test_allow_range_single_bit() {
     let mut v = SimpleVob::alloc(32);
-    v.allow_range(5..6);
+    v.allow_range(5..=5);
     // Only bit 5 set
     let mut bits = vec![false; 32];
     bits[5] = true;
@@ -29,10 +29,10 @@ fn test_allow_range_exact_word_boundary() {
     // BITS = 32, so check transitions around 32
     let mut v = SimpleVob::alloc(64);
     // set range [28..36], bridging two words
-    v.allow_range(28..36);
+    v.allow_range(28..=35);
     // bits 28..31 in word 0, and 32..35 in word 1 set
     let mut bits = vec![false; 64];
-    for i in 28..36 {
+    for i in 28..=35 {
         bits[i] = true;
     }
     assert_eq!(v.to_bin_string(), bools_to_bin_string(&bits));
@@ -42,7 +42,7 @@ fn test_allow_range_exact_word_boundary() {
 fn test_allow_range_multiple_words() {
     let mut v = SimpleVob::alloc(96);
     // set range [10..85], spanning multiple 32-bit words
-    v.allow_range(10..85);
+    v.allow_range(10..=84);
     let mut bits = vec![false; 96];
     for i in 10..85 {
         bits[i] = true;
@@ -54,7 +54,7 @@ fn test_allow_range_multiple_words() {
 fn test_allow_range_start_and_end_midword() {
     let mut v = SimpleVob::alloc(96);
     // set [5..60], both start and end are midword
-    v.allow_range(5..60);
+    v.allow_range(5..=59);
     let mut bits = vec![false; 96];
     for i in 5..60 {
         bits[i] = true;
@@ -66,7 +66,7 @@ fn test_allow_range_start_and_end_midword() {
 fn test_allow_range_end_at_word_boundary() {
     let mut v = SimpleVob::alloc(64);
     // set range [5..32]
-    v.allow_range(5..32);
+    v.allow_range(5..=31);
     let mut bits = vec![false; 64];
     for i in 5..32 {
         bits[i] = true;
@@ -78,7 +78,7 @@ fn test_allow_range_end_at_word_boundary() {
 fn test_allow_range_entire_capacity() {
     // set entire range from 0..size
     let mut v = SimpleVob::alloc(64);
-    v.allow_range(0..64);
+    v.allow_range(0..=63);
     // all bits should be set
     let bits = vec![true; 64];
     assert_eq!(v.to_bin_string(), bools_to_bin_string(&bits));
@@ -89,7 +89,7 @@ fn test_allow_range_partial_out_of_bounds() {
     // check that assertion triggers if range.end > self.size
     let mut v = SimpleVob::alloc(32);
     let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
-        v.allow_range(0..33); // out of bounds
+        v.allow_range(0..=32); // out of bounds
     }));
     assert!(result.is_err());
 }
@@ -98,7 +98,7 @@ fn test_allow_range_partial_out_of_bounds() {
 fn test_allow_range_upper_edge() {
     // set the last bit in the buffer
     let mut v = SimpleVob::alloc(32);
-    v.allow_range(31..32);
+    v.allow_range(31..=31);
     let mut bits = vec![false; 32];
     bits[31] = true;
     assert_eq!(v.to_bin_string(), bools_to_bin_string(&bits));
@@ -211,7 +211,7 @@ fn test_iter_entries() {
 #[test]
 fn test_write_to() {
     let mut v = SimpleVob::alloc(64);
-    v.allow_range(0..32);
+    v.allow_range(0..=31);
     // write out first two u32's
     let mut buf = [0u8; 8];
     v.write_to(&mut buf);
@@ -243,7 +243,7 @@ fn test_set() {
 #[test]
 fn test_resize() {
     let mut v = SimpleVob::alloc(32);
-    v.allow_range(0..8);
+    v.allow_range(0..=7);
     assert_eq!(v.num_set(), 8);
     // resize to a bigger size
     v.resize(64);
@@ -280,7 +280,7 @@ fn test_set_all() {
 fn test_apply_to() {
     // any "allowed" bit sets logits[idx] to 0.0
     let mut v = SimpleVob::alloc(10);
-    v.allow_range(3..5);
+    v.allow_range(3..=4);
     let mut logits = vec![1.0; 10];
     v.apply_to(&mut logits);
     // bits 3 and 4 should be 0.0
@@ -328,7 +328,7 @@ fn test_or() {
 fn test_trim_trailing_zeros() {
     // add 64 bits, set bits near start
     let mut v = SimpleVob::alloc(64);
-    v.allow_range(0..5);
+    v.allow_range(0..=4);
     // trim
     v.trim_trailing_zeros();
     assert_eq!(v.as_slice().len(), 1);

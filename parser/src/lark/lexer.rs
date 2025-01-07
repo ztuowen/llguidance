@@ -170,6 +170,9 @@ pub fn lex_lark(input: &str) -> Result<Vec<Lexeme>> {
             LexerResult::Error => {
                 bail!("{}({}): lexer error", line_no, column_no);
             }
+            LexerResult::SpecialToken(_) => {
+                bail!("{}({}): lexer special token", line_no, column_no);
+            }
             LexerResult::State(s, _) => {
                 state = s;
             }

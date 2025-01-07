@@ -220,7 +220,34 @@ impl Compiler {
                             bail!("unknown name: {:?}", n);
                         }
                     }
-                    Value::SpecialToken(s) => return Ok(self.builder.special_token(s)),
+                    Value::SpecialToken(s) => {
+                        if s.starts_with("<[") && s.ends_with("]>") {
+                            let s = &s[2..s.len() - 2];
+                            let mut ranges = vec![];
+                            for range in s.split(",") {
+                                let ends: Vec<&str> = range.split('-').map(|s| s.trim()).collect();
+                                ensure!(
+                                    ends.len() == 1 || ends.len() == 2,
+                                    "invalid token range: {:?}",
+                                    range
+                                );
+                                if ends.len() == 1 && ends[0].is_empty() {
+                                    continue;
+                                }
+                                let start = ends[0].parse::<u32>()?;
+                                let end = if ends.len() == 2 {
+                                    ends[1].parse::<u32>()?
+                                } else {
+                                    start
+                                };
+                                ensure!(start <= end, "invalid token range: {:?}", range);
+                                ranges.push(start..=end);
+                            }
+                            ensure!(!ranges.is_empty(), "empty token range");
+                            return Ok(self.builder.token_ranges(ranges));
+                        }
+                        return Ok(self.builder.special_token(s));
+                    }
                     Value::GrammarRef(g) => {
                         return Ok(self.builder.gen_grammar(
                             GenGrammarOptions {

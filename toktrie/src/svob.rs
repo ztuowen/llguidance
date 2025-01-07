@@ -1,7 +1,7 @@
 use std::{
     fmt::Debug,
     hash::Hash,
-    ops::{Index, Range},
+    ops::{Index, RangeInclusive},
 };
 
 pub type TokenId = u32;
@@ -242,11 +242,11 @@ impl SimpleVob {
         }
     }
 
-    pub fn allow_range(&mut self, range: Range<TokenId>) {
-        assert!(range.end <= self.size as TokenId);
-        let start = range.start as usize;
-        let end = range.end as usize - 1;
-        if start >= end + 1 {
+    pub fn allow_range(&mut self, range: RangeInclusive<TokenId>) {
+        assert!(*range.end() < self.size as TokenId);
+        let start = *range.start() as usize;
+        let end = *range.end() as usize;
+        if start > end {
             return;
         }
         let start_word = start / BITS;

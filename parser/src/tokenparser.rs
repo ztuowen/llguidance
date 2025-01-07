@@ -339,7 +339,7 @@ impl TokenParser {
 
         let mut byte_ptr = 0;
         for (token_ptr, tok) in tokens.iter().enumerate() {
-            byte_ptr += self.tok_trie().token(*tok).len();
+            byte_ptr += self.tok_trie().token_len(*tok);
             if byte_ptr > n_valid {
                 return Ok(token_ptr);
             }
@@ -409,7 +409,7 @@ impl TokenParser {
         self.is_accepting_cache = None;
         self.llm_tokens.push(tok_id);
 
-        let tok_bytes = trie.token(tok_id);
+        let tok_bytes = trie.decode_raw(&[tok_id]);
 
         // first, check we're still in grm_prefix
         let prefix_len = self.grm_prefix.len().saturating_sub(self.llm_bytes.len());
@@ -436,7 +436,7 @@ impl TokenParser {
                 return Ok(0);
             }
         } else {
-            tok_bytes
+            &tok_bytes
         };
 
         if let Some(err) = self.parser.get_error() {
@@ -463,7 +463,7 @@ impl TokenParser {
                             break; // we can't backtrack any further
                         }
                         let tok = self.llm_tokens[tok_off - 1];
-                        backtrack_bytes -= trie.token(tok).len() as isize;
+                        backtrack_bytes -= trie.token_len(tok) as isize;
                         backtrack_tokens += 1;
                     }
                     assert!(backtrack_tokens > 0);

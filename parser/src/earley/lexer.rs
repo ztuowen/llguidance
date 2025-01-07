@@ -41,9 +41,10 @@ pub struct PreLexeme {
     pub hidden_len: usize,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug)]
 pub enum LexerResult {
     Lexeme(PreLexeme),
+    SpecialToken(StateID),
     State(StateID, u8),
     Error,
 }
@@ -193,6 +194,9 @@ impl Lexer {
             }
         } else if state.has_lowest_match() {
             if let Some((idx, hidden_len)) = self.dfa.lowest_match(state) {
+                if self.dfa.state_desc(state).has_special_token {
+                    return LexerResult::SpecialToken(state);
+                }
                 LexerResult::Lexeme(PreLexeme {
                     idx: LexemeIdx::new(idx),
                     byte: Some(byte),

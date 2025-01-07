@@ -1,7 +1,7 @@
 use anyhow::Result;
 use derivre::{raw::ExprSet, ExprRef, JsonQuoteOptions, RegexAst, RegexBuilder};
-use std::{fmt::Debug, hash::Hash};
-use toktrie::{bytes::limit_str, SimpleVob, TokTrie};
+use std::{fmt::Debug, hash::Hash, ops::RangeInclusive};
+use toktrie::{bytes::limit_str, SimpleVob, TokTrie, TokenId};
 
 use crate::{api::ParserLimits, id32_type};
 
@@ -16,6 +16,8 @@ pub struct LexerSpec {
     pub num_extra_lexemes: usize,
     pub skip_by_class: Vec<LexemeIdx>,
     pub current_class: LexemeClass,
+    // regex for \xFF \[ [0-9]+ \]
+    pub special_token_rx: Option<ExprRef>,
 }
 
 #[derive(Clone, Copy, Hash, PartialEq, Eq, Debug)]
@@ -45,12 +47,30 @@ pub struct LexemeSpec {
     max_tokens: usize,
     pub(crate) is_skip: bool,
     json_options: Option<JsonQuoteOptions>,
+    pub(crate) token_ranges: Vec<RangeInclusive<TokenId>>,
 }
 
 // LexemeIdx is an index into the lexeme table.
 // It corresponds to a category like IDENTIFIER or STRING,
 // or to a very specific lexeme like WHILE or MULTIPLY.
 id32_type!(LexemeIdx);
+
+pub fn token_ranges_to_string(token_ranges: &Vec<RangeInclusive<TokenId>>) -> String {
+    use std::fmt::Write;
+    let mut s = "<[".to_string();
+    for range in token_ranges {
+        if s.len() > 2 {
+            s.push_str(",");
+        }
+        if range.start() == range.end() {
+            write!(s, "{:?}", range.start()).unwrap();
+        } else {
+            write!(s, "{:?}-{:?}", range.start(), range.end()).unwrap();
+        }
+    }
+    s.push_str("]>");
+    s
+}
 
 impl LexemeSpec {
     pub fn class(&self) -> LexemeClass {
@@ -72,6 +92,9 @@ impl LexemeSpec {
         if self.contextual {
             f.push_str(" contextual");
         }
+        if self.token_ranges.len() > 0 {
+            write!(f, " tokens={}", token_ranges_to_string(&self.token_ranges)).unwrap();
+        }
         f
     }
 }
@@ -87,6 +110,7 @@ impl LexerSpec {
     pub fn new() -> Result<Self> {
         Ok(LexerSpec {
             lexemes: Vec::new(),
+            special_token_rx: None,
             regex_builder: RegexBuilder::new(),
             no_forcing: false,
             allow_initial_skip: false,
@@ -157,6 +181,17 @@ impl LexerSpec {
         v
     }
 
+    pub fn token_range_lexemes(&self, possible: &SimpleVob) -> Vec<&LexemeSpec> {
+        let mut res = Vec::new();
+        possible.iter_set_entries(|idx| {
+            let spec = &self.lexemes[idx];
+            if spec.token_ranges.len() > 0 {
+                res.push(spec);
+            }
+        });
+        res
+    }
+
     pub fn is_nullable(&self, idx: LexemeIdx) -> bool {
         self.regex_builder
             .is_nullable(self.lexemes[idx.as_usize()].compiled_rx)
@@ -174,12 +209,28 @@ impl LexerSpec {
             self.regex_builder.exprset(),
             &rx_list,
             Some(self.lazy_lexemes()),
+            self.special_token_rx,
             limits,
         )
     }
 
     fn add_lexeme_spec(&mut self, mut spec: LexemeSpec) -> Result<LexemeIdx> {
-        let compiled = self.regex_builder.mk(&spec.rx)?;
+        let compiled = if spec.token_ranges.len() > 0 {
+            if let Some(rx) = self.special_token_rx {
+                rx
+            } else {
+                let rx_ast = RegexAst::Concat(vec![
+                    RegexAst::Byte(TokTrie::SPECIAL_TOKEN_MARKER),
+                    RegexAst::Regex(r"\[[0-9]+\]".to_string()),
+                ]);
+                let compiled = self.regex_builder.mk(&rx_ast)?;
+                self.special_token_rx = Some(compiled);
+                compiled
+            }
+        } else {
+            self.regex_builder.mk(&spec.rx)?
+        };
+
         let compiled = if let Some(ref opts) = spec.json_options {
             self.regex_builder.json_quote(compiled, opts)?
         } else {
@@ -189,6 +240,7 @@ impl LexerSpec {
             lex.compiled_rx == compiled
                 && lex.class == spec.class
                 && lex.max_tokens == spec.max_tokens
+                && lex.token_ranges == spec.token_ranges
         }) {
             return Ok(LexemeIdx::new(idx));
         }
@@ -216,6 +268,7 @@ impl LexerSpec {
             json_options: None,
             class: self.current_class,
             max_tokens: usize::MAX,
+            token_ranges: vec![],
         }
     }
 
@@ -256,14 +309,14 @@ impl LexerSpec {
         })
     }
 
-    pub fn add_special_token(&mut self, name: String) -> Result<LexemeIdx> {
-        let rx = RegexAst::Concat(vec![
-            RegexAst::Byte(TokTrie::SPECIAL_TOKEN_MARKER),
-            RegexAst::Literal(name.clone()),
-        ]);
+    pub fn add_special_token(
+        &mut self,
+        name: String,
+        token_ranges: Vec<RangeInclusive<TokenId>>,
+    ) -> Result<LexemeIdx> {
         self.add_lexeme_spec(LexemeSpec {
             name,
-            rx,
+            token_ranges,
             ..self.empty_spec()
         })
     }

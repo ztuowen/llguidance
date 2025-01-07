@@ -65,6 +65,7 @@ pub struct RegexVec {
     alpha: AlphabetInfo,
     lazy: SimpleVob,
     rx_list: Vec<ExprRef>,
+    special_token_rx: Option<ExprRef>,
     rx_sets: VecHashCons,
     state_table: Vec<StateID>,
     state_descs: Vec<StateDesc>,
@@ -81,6 +82,7 @@ pub struct StateDesc {
     pub accepting: SimpleVob,
     pub possible: SimpleVob,
     pub lowest_match: Option<(usize, usize)>,
+    pub has_special_token: bool,
 
     possible_lookahead_len: Option<usize>,
     lookahead_len: Option<Option<usize>>,
@@ -426,6 +428,7 @@ impl RegexVec {
         exprset: &ExprSet,
         rx_list: &[ExprRef],
         lazy: Option<SimpleVob>,
+        special_token_rx: Option<ExprRef>,
         limits: &mut ParserLimits,
     ) -> Result<Self> {
         let (alpha, mut exprset, mut rx_list) = AlphabetInfo::from_exprset(exprset, rx_list);
@@ -460,6 +463,7 @@ impl RegexVec {
         let mut r = RegexVec {
             deriv: DerivCache::new(),
             next_byte: NextByteCache::new(),
+            special_token_rx,
             relevance,
             lazy: lazy.unwrap_or_else(|| SimpleVob::alloc(rx_list.len())),
             exprs: exprset,
@@ -504,6 +508,11 @@ impl RegexVec {
         if id.as_usize() >= self.state_descs.len() {
             let mut state_desc = self.compute_state_desc(id);
             state_desc.lowest_match = self.lowest_match_inner(id);
+            if let Some((idx, _)) = state_desc.lowest_match {
+                if Some(self.rx_list[idx]) == self.special_token_rx {
+                    state_desc.has_special_token = true;
+                }
+            }
             self.append_state(state_desc);
         }
         if self.state_desc(id).lowest_match.is_some() {
@@ -523,6 +532,7 @@ impl RegexVec {
             lookahead_len: None,
             next_byte: None,
             lowest_match: None,
+            has_special_token: false,
         };
         for (idx, e) in iter_state(&self.rx_sets, state) {
             res.possible.set(idx, true);

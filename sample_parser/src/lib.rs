@@ -65,21 +65,41 @@ fn check_grammar(
                 panic!("No more tokens to generate");
             }
 
-            let tok = gen_tokens[0];
+            loop {
+                let (is_allowed, tok) = gen_tokens[0];
+                if is_allowed {
+                    break;
+                }
+                assert!(
+                    !mask.is_allowed(tok),
+                    "Token {} {} should not be allowed",
+                    tok,
+                    tok_env.tok_trie().token_dbg(tok)
+                );
+                gen_tokens.remove(0);
+            }
+
+            let (_, tok) = gen_tokens[0];
             assert!(
                 mask.is_allowed(tok),
-                "Token {} {} not allowed",
+                "Token {} {} should be allowed",
                 tok,
                 tok_env.tok_trie().token_dbg(tok)
             );
 
-            let num_ok = constraint.validate_tokens_raw(&gen_tokens).unwrap();
-            if num_ok < gen_tokens.len() {
+            let rest_allowed = gen_tokens
+                .iter()
+                .filter(|(is_allowed, _)| *is_allowed)
+                .map(|(_, tok)| *tok)
+                .collect::<Vec<_>>();
+
+            let num_ok = constraint.validate_tokens_raw(&rest_allowed).unwrap();
+            if num_ok < rest_allowed.len() {
                 panic!(
                     "Expected {} tokens to be allowed; got {}; {}",
-                    gen_tokens.len(),
+                    rest_allowed.len(),
                     num_ok,
-                    tok_env.tok_trie().tokens_dbg(&gen_tokens)
+                    tok_env.tok_trie().tokens_dbg(&rest_allowed)
                 );
             }
             gen_tokens.remove(0);
@@ -159,24 +179,50 @@ fn check_eq(tok_env: &TokEnv, label: &str, tokens: &[TokenId], expected_tokens: 
     );
 }
 
-fn tokenize_trace(tok_env: &TokEnv, s: &str) -> Vec<TokenId> {
+fn tokenize_trace(tok_env: &TokEnv, s: &str) -> Vec<(bool, TokenId)> {
     let trie = tok_env.tok_trie();
     println!("Tokenizing {:?}", s);
     let mut result = Vec::new();
-    for word in s.split("‧") {
-        if word == "≺EOS≻" {
-            result.push(trie.eos_token());
+    if s.is_empty() {
+        return result;
+    }
+
+    // Split by both ‧ and × to catch all tokens
+    let words = s.split(|c| c == '‧' || c == '✖').collect::<Vec<&str>>();
+    let mut char_pos = 0;
+
+    for word in words {
+        if word.is_empty() {
+            char_pos += 1;
             continue;
         }
-        let tt = trie.greedy_tokenize(word.as_bytes());
-        assert!(
-            tt.len() == 1,
-            "Expected single token for {:?} got {}",
-            word,
-            trie.test_trace_tokens(&tt)
-        );
-        result.push(tt[0]);
+
+        // Determine if this token started with ‧ (true) or × (false)
+        let is_allowed = if char_pos > 0 {
+            let char_before = s.chars().nth(char_pos - 1).unwrap_or('✖');
+            char_before == '‧'
+        } else {
+            true // First token assumed to start with ‧
+        };
+
+        if word == "≺EOS≻" {
+            result.push((is_allowed, trie.eos_token()));
+        } else if let Some(t) = trie.get_special_token(word) {
+            result.push((is_allowed, t));
+        } else {
+            let tt = trie.greedy_tokenize(word.as_bytes());
+            assert!(
+                tt.len() == 1,
+                "Expected single token for {:?} got {}",
+                word,
+                trie.test_trace_tokens(&tt)
+            );
+            result.push((is_allowed, tt[0]));
+        }
+
+        char_pos += word.chars().count() + 1; // +1 for the separator
     }
+
     result
 }
 

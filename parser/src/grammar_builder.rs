@@ -1,7 +1,7 @@
 use anyhow::{bail, ensure, Result};
 use derivre::RegexAst;
 use hashbrown::HashMap;
-use std::sync::atomic::AtomicU32;
+use std::{ops::RangeInclusive, sync::atomic::AtomicU32};
 
 use crate::api::{
     GenGrammarOptions, GenOptions, GrammarWithLexer, Node, NodeId, NodeProps, RegexId, RegexNode,
@@ -262,6 +262,13 @@ impl GrammarBuilder {
         });
         self.strings.insert(s.to_string(), r);
         r
+    }
+
+    pub fn token_ranges(&mut self, token_ranges: Vec<RangeInclusive<u32>>) -> NodeRef {
+        self.add_node(Node::TokenRanges {
+            token_ranges,
+            props: NodeProps::default(),
+        })
     }
 
     pub fn special_token(&mut self, name: &str) -> NodeRef {

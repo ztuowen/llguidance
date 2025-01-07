@@ -642,6 +642,21 @@ impl ParserState {
         assert!(toks.len() == 1);
         set.disallow_token(toks[0]);
 
+        if start.is_empty() {
+            self.run_speculative("token_ranges", |state| {
+                if state.flush_lexer() {
+                    let possible = state
+                        .lexer()
+                        .possible_lexemes(state.lexer_state().lexer_state);
+                    for spec in state.lexer_spec().token_range_lexemes(possible) {
+                        for range in &spec.token_ranges {
+                            set.allow_range(range.clone());
+                        }
+                    }
+                }
+            });
+        }
+
         if set.is_zero() {
             // nothing allowed
             // we're going to be stopped outside - we better flush the lexer
@@ -1035,6 +1050,55 @@ impl ParserState {
         self.with_items_limit(self.limits.step_max_items, "ff_tokens", |s| {
             while let Some(b) = s.forced_byte() {
                 debug!("  forced: {:?} 0x{:x}", b as char, b);
+                if b == TokTrie::SPECIAL_TOKEN_MARKER {
+                    assert!(!s.has_pending_lexeme_bytes());
+                    let state = s.lexer_state().lexer_state;
+                    let possible = s.lexer().possible_lexemes(state);
+                    let specs = s.lexer_spec().token_range_lexemes(possible);
+                    let mut unique_token_id = None;
+                    for s in specs {
+                        if s.token_ranges.len() == 1 {
+                            let range = &s.token_ranges[0];
+                            if range.start() == range.end() {
+                                let t = *range.start();
+                                if unique_token_id.is_none() || unique_token_id == Some(t) {
+                                    unique_token_id = Some(t);
+                                } else {
+                                    unique_token_id = None;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    if let Some(token_id) = unique_token_id {
+                        let mut bytes = format!("X[{}]", token_id).into_bytes();
+                        bytes[0] = TokTrie::SPECIAL_TOKEN_MARKER;
+                        let mut all_ok = true;
+                        for b in bytes {
+                            let (ok, bt) = s.try_push_byte_definitive(Some(b));
+                            assert!(bt == 0);
+                            if !ok {
+                                all_ok = false;
+                                break;
+                            }
+                        }
+
+                        if !all_ok {
+                            // shouldn't happen?
+                            debug!(
+                                "  force_bytes reject, special token {}, byte = {}",
+                                token_id, b as char
+                            );
+                            break;
+                        } else {
+                            continue;
+                        }
+                    } else {
+                        debug!("  non-determined special token");
+                        break;
+                    }
+                }
+
                 let (ok, bt) = s.try_push_byte_definitive(Some(b));
                 assert!(bt == 0);
                 if !ok {
@@ -1053,6 +1117,34 @@ impl ParserState {
         );
     }
 
+    fn special_pre_lexeme(&mut self, state: StateID) -> bool {
+        let possible = self.lexer().possible_lexemes(state);
+        let specs = self.lexer_spec().token_range_lexemes(possible);
+        let bytes = self.curr_row_bytes();
+        let bytes = &bytes[1..bytes.len() - 1];
+        if let Ok(tok_id) = u32::from_str_radix(std::str::from_utf8(bytes).unwrap(), 10) {
+            let idx = specs.iter().position(|spec| {
+                spec.token_ranges
+                    .iter()
+                    .any(|range| range.contains(&tok_id))
+            });
+            if let Some(idx) = idx {
+                let pre = PreLexeme {
+                    idx: LexemeIdx::new(idx),
+                    byte: Some(b']'),
+                    byte_next_row: false,
+                    hidden_len: 0,
+                };
+                self.advance_parser(pre)
+            } else {
+                false
+            }
+        } else {
+            // should never happen?
+            false
+        }
+    }
+
     // Advance the parser or the lexer, depending on whether 'lex_result'
     // is a pre-lexeme or not.
     #[inline(always)]
@@ -1069,6 +1161,7 @@ impl ParserState {
             }
             LexerResult::Error => false,
             LexerResult::Lexeme(pre_lexeme) => self.advance_parser(pre_lexeme),
+            LexerResult::SpecialToken(state) => self.special_pre_lexeme(state),
         }
     }
 
@@ -1789,6 +1882,7 @@ impl ParserState {
                     LexerResult::State(next_state, _) => {
                         lexer_state = next_state;
                     }
+                    LexerResult::SpecialToken(_) => panic!("hidden byte resulted in special token"),
                     LexerResult::Error => panic!("hidden byte failed; {:?}", hidden_bytes),
                     LexerResult::Lexeme(second_lexeme) => {
                         if self.scratch.definitive {
@@ -2098,7 +2192,9 @@ impl<'a> Recognizer for ParserRecognizer<'a> {
             match res {
                 LexerResult::State(_, _) => {}
                 LexerResult::Error => self.state.stats.num_lex_errors += 1,
-                LexerResult::Lexeme(_) => self.state.stats.num_lexemes += 1,
+                LexerResult::Lexeme(_) | LexerResult::SpecialToken(_) => {
+                    self.state.stats.num_lexemes += 1
+                }
             }
         }
 

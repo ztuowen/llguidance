@@ -7,7 +7,7 @@ use crate::api::{
     GrammarId, GrammarWithLexer, Node, ParserLimits, RegexId, RegexNode, RegexSpec,
     TopLevelGrammar, DEFAULT_CONTEXTUAL,
 };
-use crate::earley::lexerspec::LexemeClass;
+use crate::earley::lexerspec::{token_ranges_to_string, LexemeClass};
 use crate::{lark_to_llguidance, loginfo, JsonCompileOptions, Logger};
 use anyhow::{bail, ensure, Result};
 use derivre::{ExprRef, JsonQuoteOptions, RegexAst};
@@ -286,7 +286,10 @@ fn grammar_from_json(
             }
             Node::SpecialToken { token, .. } => {
                 let trie = tok_env.tok_trie();
-                if trie.get_special_token(token).is_none() {
+                if let Some(tok_id) = trie.get_special_token(token) {
+                    let idx = lexer_spec.add_special_token(token.clone(), vec![tok_id..=tok_id])?;
+                    grm.make_terminal(lhs, idx, &lexer_spec)?;
+                } else {
                     let spec = trie.get_special_tokens();
                     bail!(
                         "unknown special token: {:?}; following special tokens are available: {}",
@@ -294,7 +297,21 @@ fn grammar_from_json(
                         trie.tokens_dbg(&spec)
                     );
                 }
-                let idx = lexer_spec.add_special_token(token.clone())?;
+            }
+            Node::TokenRanges { token_ranges, .. } => {
+                let name = token_ranges_to_string(token_ranges);
+                let trie = tok_env.tok_trie();
+
+                for r in token_ranges {
+                    ensure!(r.start() <= r.end(), "Invalid token range: {:?}", r);
+                    ensure!(
+                        *r.end() < trie.vocab_size() as u32,
+                        "Token range end too large: {:?}",
+                        r.end()
+                    );
+                }
+
+                let idx = lexer_spec.add_special_token(name, token_ranges.clone())?;
                 grm.make_terminal(lhs, idx, &lexer_spec)?;
             }
         }

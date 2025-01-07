@@ -15,7 +15,7 @@ fn test_ll_skip() {
             NUMBER: /[0-9]+/
             %ignore /[ \t]+/
         "#,
-        &["A‧:", " ‧ ‧5‧6‧≺EOS≻"],
+        &["A‧:", "✖!‧ ‧ ‧5✖!‧6‧≺EOS≻"],
     );
 
     check_lark_grammar_nested(
@@ -46,7 +46,7 @@ fn test_ll_format() {
             "-",
             "0‧2",
             "-",
-            "2‧9‧T‧1‧0",
+            "✖3‧2‧9‧T‧1‧0",
             ":",
             "3‧3",
             ":",
@@ -72,7 +72,7 @@ fn test_ll_format() {
             "-",
             "0‧2",
             "-",
-            "2‧9‧\"‧}",
+            "✖3‧2‧9‧\"‧}",
         ],
     );
 }
@@ -91,7 +91,7 @@ fn test_ll_json() {
                 }
             }
         }),
-        &["JSON", "{\"‧a‧\":‧ ‧5‧}"],
+        &["JSON", "{\"‧a‧\":‧ ‧✖true‧5‧}"],
     );
 
     // check for forcing the field name
@@ -116,7 +116,7 @@ fn test_ll_json() {
         json!({
             "type": "array"
         }),
-        &["JSON", "[‧1‧,‧2‧,‧3‧,‧4‧,‧5‧,‧6‧,‧7‧,‧8‧]", "END"],
+        &["JSON", "✖{‧[‧1‧,‧2‧,‧3‧,‧4‧,‧5‧,‧6‧,‧7‧,‧8‧]", "END"],
     );
 
     // again, off by one
@@ -165,7 +165,7 @@ fn test_ll_enum_json() {
                 }
             }
         }),
-        &["JSON", "{\"‧a‧\":‧ ‧\"‧https‧://‧example‧.‧com‧\"‧}"],
+        &["JSON", "{\"‧a‧\":‧ ‧\"‧✖x‧https‧://‧example‧.‧com‧\"‧}"],
     );
 }
 
@@ -541,5 +541,90 @@ fn test_ll_max_tokens() {
             " Carter‧ is‧ great‧;‧ Height‧:",
             " ‧5‧'‧6",
         ],
+    );
+}
+
+#[test]
+fn test_ll_special_token() {
+    check_lark_grammar(
+        r#"start: <|system|> /.*/
+        "#,
+        &["<|system|>", "✖<|system|>‧foo‧≺EOS≻"],
+    );
+
+    check_lark_grammar(
+        r#"start: hd /.*/
+           hd: <|system|> | <|user|>
+        "#,
+        &["", "✖<|assistant|>‧<|system|>‧foo‧✖<|system|>‧≺EOS≻"],
+    );
+
+    check_lark_grammar(
+        r#"start: hd /.*/
+           hd: <|system|> | <|user|>
+        "#,
+        &["", "<|user|>‧foo‧✖<|system|>‧foo‧≺EOS≻"],
+    );
+
+    check_lark_grammar(
+        r#"start: /.*/ <|system|>
+        "#,
+        &["", "foo‧✖<|user|>‧bar‧✖≺EOS≻‧<|system|>"],
+    );
+
+    check_lark_grammar(
+        r#"start: /.*/ <|system|>
+        "#,
+        &["", "✖<|user|>‧<|system|>"],
+    );
+
+    check_lark_grammar_prompt(
+        r#"
+            start: /[a-z]/
+        "#,
+        "<|system|>",
+        &["<|system|>", "a"],
+    );
+
+    check_lark_grammar_prompt(
+        r#"
+            start: /[a-z]/
+        "#,
+        "</s>",
+        &["</s>", "a"],
+    );
+}
+
+#[test]
+fn test_ll_token_ranges() {
+    // 32001 <|assistant|>
+    // 32006 <|system|>
+    // 32010 <|user|>
+
+    check_lark_grammar(
+        r#"start: hd /.*/
+           hd: <[32006,32010]>
+        "#,
+        &["", "✖<|assistant|>‧<|system|>‧foo‧✖<|system|>‧≺EOS≻"],
+    );
+
+    check_lark_grammar(
+        r#"start: hd /.*/
+           hd: <[32002-32010]>
+        "#,
+        &["", "✖<|assistant|>‧<|system|>‧foo‧✖<|system|>‧≺EOS≻"],
+    );
+
+    check_lark_grammar(
+        r#"start: hd /.*/
+           hd: <[32002-32006,32010]>
+        "#,
+        &["", "✖<|assistant|>‧<|system|>‧foo‧✖<|system|>‧≺EOS≻"],
+    );
+
+    check_lark_grammar(
+        r#"start: <[32006]> /.*/
+        "#,
+        &["<|system|>", "✖<|system|>‧foo‧≺EOS≻"],
     );
 }

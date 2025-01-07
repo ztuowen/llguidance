@@ -1,7 +1,11 @@
-use std::fmt::{Debug, Display};
+use std::{
+    fmt::{Debug, Display},
+    ops::RangeInclusive,
+};
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use toktrie::TokenId;
 
 /// This represents a collection of grammars, with a designated
 /// "start" grammar at first position.
@@ -141,6 +145,13 @@ pub enum Node {
     /// Used for special tokens.
     SpecialToken {
         token: String,
+
+        #[serde(flatten)]
+        props: NodeProps,
+    },
+    /// Used for special tokens.
+    TokenRanges {
+        token_ranges: Vec<RangeInclusive<TokenId>>,
 
         #[serde(flatten)]
         props: NodeProps,
@@ -324,6 +335,7 @@ impl Node {
             Node::Select { props, .. } => props,
             Node::Join { props, .. } => props,
             Node::SpecialToken { props, .. } => props,
+            Node::TokenRanges { props, .. } => props,
         }
     }
 }

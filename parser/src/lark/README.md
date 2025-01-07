@@ -15,6 +15,9 @@ Following are the extensions to Lark syntax:
 - special tokens can referenced via `<token_name>` syntax, for example `<|ENDOFTEXT|>`;
   they cannot be used inside of terminals, but can be used in regular rules;
   the exact syntax depends on the tokenizer
+- it is also possible to use numeric token ids, as in `<[128010]>` for llama's `<|python_tag|>`;
+  you can also use ranges like `<[128000-128255]>` for all llama special tokens, or
+  even lists of ranges like `<[128000-128100,128130-128170]>`; ranges are inclusive
 - `max_tokens`, `temperature` and `stop` can be specified on rules, but the rule body must be a token expression,
   for example: `mygen[stop="\n", max_tokens=10, temperature=0.7]: /.*/`
 - if `stop` is specified (possibly as `""`) the rule is treated as `gen()` in Guidance;
