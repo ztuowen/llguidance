@@ -8,6 +8,7 @@ use std::{fmt::Debug, hash::Hash};
 pub struct SymIdx(u32);
 
 impl SymIdx {
+    pub const BOGUS: SymIdx = SymIdx(u32::MAX);
     pub fn as_usize(&self) -> usize {
         self.0 as usize
     }

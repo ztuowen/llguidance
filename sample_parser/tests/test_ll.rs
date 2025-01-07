@@ -628,3 +628,35 @@ fn test_ll_token_ranges() {
         &["<|system|>", "✖<|system|>‧foo‧≺EOS≻"],
     );
 }
+
+#[test]
+fn test_ll_inline_json() {
+    let grm = r#"
+start: hd obj
+obj: %json {
+    "type": "object",
+    "properties": {
+        "a": {
+            "type": "number"
+        }
+    }
+}
+hd: "JSON"
+"#;
+
+    check_lark_grammar(grm, &["JSON", "{\"‧a‧\":‧ ‧✖true‧5‧}"]);
+
+    let grm = r#"
+start: "JSON" obj
+obj: %json{
+    "type": "object",
+    "properties": {
+        "a": {
+            "type": "number"
+        }
+    }
+} "END"
+"#;
+
+    check_lark_grammar(grm, &["JSON", "{\"‧a‧\":‧ ‧✖true‧5‧}", "END"]);
+}

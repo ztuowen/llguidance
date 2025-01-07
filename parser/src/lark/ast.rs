@@ -123,6 +123,7 @@ pub enum Value {
     LiteralRegex(String, String),
     GrammarRef(String),
     SpecialToken(String),
+    Json(String),
     #[allow(dead_code)]
     TemplateUsage {
         name: String,

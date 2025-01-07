@@ -12,6 +12,8 @@ Following are the extensions to Lark syntax:
   with `"name": "my_grammar"`.
 - you can specify temperature for subgrammar by referencing it via
   `my_temp_json[temperature=0.7]: @json` syntax
+- you can also inline JSON schema in the lark grammar, using `%json { ... }` syntax
+  (it behaves like non-terminal)
 - special tokens can referenced via `<token_name>` syntax, for example `<|ENDOFTEXT|>`;
   they cannot be used inside of terminals, but can be used in regular rules;
   the exact syntax depends on the tokenizer
@@ -87,5 +89,21 @@ normal_text: /(.|\n)*/
     {"name": "fun0", "json_schema": { ... }},
     {"name": "fun1", "json_schema": { ... }}
   ]
+}
+```
+
+It is also possible to inline the JSON schema in the lark grammar, like so:
+
+```lark
+start: normal_text | fun_call
+fun_call: <|python_tag|> ( fun0 | fun1 ) <|eom_id|>
+normal_text: /(.|\n)*/
+fun0: %json {
+  "type": "object",
+  ...
+}
+fun1: %json {
+  "type": "object",
+  ...
 }
 ```

@@ -8,7 +8,7 @@ use crate::{
         GenGrammarOptions, GenOptions, GrammarId, GrammarWithLexer, Node, NodeProps, RegexId,
         RegexSpec, TopLevelGrammar,
     },
-    GrammarBuilder, NodeRef,
+    GrammarBuilder, JsonCompileOptions, NodeRef,
 };
 
 use super::{ast::*, common::lookup_common_regex, lexer::Location, parser::parse_lark};
@@ -23,6 +23,7 @@ struct Grammar {
 struct Compiler {
     test_rx: derivre::RegexBuilder,
     builder: GrammarBuilder,
+    additional_grammars: Vec<GrammarWithLexer>,
     items: Vec<Item>,
     grammar: Arc<Grammar>,
     node_ids: HashMap<String, NodeRef>,
@@ -34,6 +35,7 @@ pub fn compile_lark(items: Vec<Item>) -> Result<TopLevelGrammar> {
     let mut c = Compiler {
         builder: GrammarBuilder::new(),
         test_rx: derivre::RegexBuilder::new(),
+        additional_grammars: vec![],
         items,
         grammar: Arc::new(Grammar::default()),
         node_ids: HashMap::new(),
@@ -41,7 +43,9 @@ pub fn compile_lark(items: Vec<Item>) -> Result<TopLevelGrammar> {
         in_progress: HashSet::new(),
     };
     c.execute()?;
-    c.builder.finalize()
+    let mut r = c.builder.finalize()?;
+    r.grammars.extend(c.additional_grammars);
+    Ok(r)
 }
 
 pub fn lark_to_llguidance(lark: &str) -> Result<TopLevelGrammar> {
@@ -133,6 +137,9 @@ impl Compiler {
                 }
                 Value::SpecialToken(s) => {
                     bail!("special tokens (like {:?}) cannot be used as terminals", s);
+                }
+                Value::Json(_) => {
+                    bail!("%json literals cannot be used as terminals");
                 }
                 Value::GrammarRef(g) => {
                     bail!(
@@ -252,6 +259,26 @@ impl Compiler {
                         return Ok(self.builder.gen_grammar(
                             GenGrammarOptions {
                                 grammar: Compiler::get_grammar_id(g),
+                                temperature: None,
+                            },
+                            NodeProps::default(),
+                        ));
+                    }
+                    Value::Json(s) => {
+                        let opts = JsonCompileOptions::default();
+                        let v = serde_json::from_str(&s)
+                            .map_err(|e| anyhow!("failed to parse JSON: {}", e))?;
+                        let mut grm = opts
+                            .json_to_llg_no_validate(v)
+                            .map_err(|e| anyhow!("failed to compile JSON schema: {}", e))?;
+                        assert!(grm.grammars.len() == 1);
+                        let mut g = grm.grammars.pop().unwrap();
+                        let name = format!("%json---{}", self.additional_grammars.len());
+                        g.name = Some(name.clone());
+                        self.additional_grammars.push(g);
+                        return Ok(self.builder.gen_grammar(
+                            GenGrammarOptions {
+                                grammar: GrammarId::Name(name),
                                 temperature: None,
                             },
                             NodeProps::default(),

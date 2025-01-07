@@ -3,6 +3,7 @@ use std::fmt::Display;
 use anyhow::{bail, Result};
 use derivre::RegexAst;
 use hashbrown::HashMap;
+use serde_json::{Deserializer, Value};
 
 use crate::{
     api::ParserLimits,
@@ -18,6 +19,7 @@ pub enum Token {
     KwImport,
     KwOverride,
     KwDeclare,
+    KwJson,
     Colon,
     Equals,
     Comma,
@@ -85,6 +87,7 @@ impl Token {
         (Token::KwIgnore, "%ignore"),
         (Token::KwImport, "%import"),
         (Token::KwOverride, "%override"),
+        (Token::KwJson, "%json"),
         (Token::LParen, "("),
         (Token::RParen, ")"),
         (Token::LBrace, "{"),
@@ -157,7 +160,10 @@ pub fn lex_lark(input: &str) -> Result<Vec<Lexeme>> {
 
     let input = format!("{}\n", input);
     let input_bytes = input.as_bytes();
-    for idx in 0..=input_bytes.len() {
+
+    let mut idx = 0;
+
+    while idx <= input_bytes.len() {
         let mut b = b'\n';
         let res = if idx == input_bytes.len() {
             lexer.force_lexeme_end(state)
@@ -181,11 +187,29 @@ pub fn lex_lark(input: &str) -> Result<Vec<Lexeme>> {
 
                 let token = lexeme_idx_to_token[&p.idx];
                 curr_lexeme.token = token;
-                let end_idx = if p.byte_next_row || p.byte.is_none() {
+                let mut end_idx = if p.byte_next_row || p.byte.is_none() {
                     idx
                 } else {
                     idx + 1
                 };
+
+                if token == Token::KwJson {
+                    let (_, n_bytes) = parse_json_prefix(&input_bytes[end_idx..])?;
+                    start_idx = end_idx;
+                    end_idx += n_bytes;
+                    for &b in &input_bytes[start_idx..end_idx - 1] {
+                        if b == b'\n' {
+                            line_no += 1;
+                            column_no = 1;
+                        } else {
+                            column_no += 1;
+                        }
+                    }
+                    // make sure we account the line ending properly at the end of the loop
+                    idx = end_idx - 1;
+                    b = input_bytes[idx];
+                }
+
                 curr_lexeme.value = input[start_idx..end_idx].to_string();
                 start_idx = end_idx;
 
@@ -210,7 +234,24 @@ pub fn lex_lark(input: &str) -> Result<Vec<Lexeme>> {
         } else {
             column_no += 1;
         }
+        idx += 1;
     }
 
     Ok(lexemes)
+}
+
+fn parse_json_prefix(data: &[u8]) -> Result<(Value, usize)> {
+    let cursor = std::io::Cursor::new(data);
+    let mut stream = Deserializer::from_reader(cursor).into_iter::<Value>();
+    if let Some(result) = stream.next() {
+        match result {
+            Ok(v) => {
+                let bytes_read = stream.byte_offset();
+                Ok((v, bytes_read))
+            }
+            Err(e) => Err(e.into()),
+        }
+    } else {
+        Err(anyhow::anyhow!("empty json"))
+    }
 }

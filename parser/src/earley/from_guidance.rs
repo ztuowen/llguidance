@@ -9,7 +9,7 @@ use crate::api::{
 };
 use crate::earley::lexerspec::{token_ranges_to_string, LexemeClass};
 use crate::{lark_to_llguidance, loginfo, JsonCompileOptions, Logger};
-use anyhow::{bail, ensure, Result};
+use anyhow::{anyhow, bail, ensure, Result};
 use derivre::{ExprRef, JsonQuoteOptions, RegexAst};
 use hashbrown::HashMap;
 use instant::Instant;
@@ -93,12 +93,12 @@ fn map_rx_nodes(
 }
 
 fn grammar_from_json(
-    tok_env: &TokEnv,
-    limits: &mut ParserLimits,
-    grm: &mut Grammar,
-    lexer_spec: &mut LexerSpec,
+    ctx: &mut CompileCtx,
     mut input: GrammarWithLexer,
 ) -> Result<(SymIdx, LexemeClass)> {
+    let mut local_grammar_mapping = HashMap::new();
+    let mut additional_grammars = vec![];
+
     if input.json_schema.is_some() || input.lark_grammar.is_some() {
         ensure!(
             input.nodes.is_empty() && input.rx_nodes.is_empty(),
@@ -116,6 +116,19 @@ fn grammar_from_json(
             lark_to_llguidance(input.lark_grammar.as_ref().unwrap())?
         };
 
+        additional_grammars = new_grm.grammars.drain(1..).collect::<Vec<_>>();
+        for (off, g) in additional_grammars.iter().enumerate() {
+            let name = g
+                .name
+                .clone()
+                .ok_or_else(|| anyhow!("sub-grammar must have a name"))?;
+            let idx = ctx.grammar_roots.len() + off;
+            ctx.grammar_by_idx.insert(GrammarId::Index(idx), idx);
+            local_grammar_mapping.insert(GrammarId::Name(name), idx);
+        }
+
+        assert!(new_grm.grammars.len() == 1);
+
         let g = new_grm.grammars.pop().unwrap();
 
         input.greedy_skip_rx = g.greedy_skip_rx;
@@ -130,6 +143,11 @@ fn grammar_from_json(
     ensure!(input.nodes.len() > 0, "empty grammar");
 
     let utf8 = !input.allow_invalid_utf8;
+    let lexer_spec = &mut ctx.lexer_spec;
+    let grm = &mut ctx.grammar;
+    let limits = &mut ctx.limits;
+    let tok_env = &ctx.tok_env;
+
     lexer_spec.regex_builder.utf8(utf8);
     lexer_spec.regex_builder.unicode(utf8);
 
@@ -282,6 +300,10 @@ fn grammar_from_json(
                 }
             }
             Node::GenGrammar { data, .. } => {
+                let mut data = data.clone();
+                if let Some(idx) = local_grammar_mapping.get(&data.grammar) {
+                    data.grammar = GrammarId::Index(*idx);
+                }
                 grm.make_gen_grammar(lhs, data.clone())?;
             }
             Node::SpecialToken { token, .. } => {
@@ -332,14 +354,28 @@ fn grammar_from_json(
     limits.initial_lexer_fuel = limits.initial_lexer_fuel.saturating_sub(lexer_spec.cost());
     limits.max_grammar_size = limits.max_grammar_size.saturating_sub(size);
 
+    for g in additional_grammars {
+        let v = grammar_from_json(ctx, g)?;
+        ctx.grammar_roots.push(v);
+    }
+
     Ok((node_map[0], grammar_id))
+}
+
+struct CompileCtx {
+    tok_env: TokEnv,
+    limits: ParserLimits,
+    lexer_spec: LexerSpec,
+    grammar: Grammar,
+    grammar_by_idx: HashMap<GrammarId, usize>,
+    grammar_roots: Vec<(SymIdx, LexemeClass)>,
 }
 
 pub fn grammars_from_json(
     input: TopLevelGrammar,
     tok_env: &TokEnv,
     logger: &mut Logger,
-    mut limits: ParserLimits,
+    limits: ParserLimits,
     extra_lexemes: Vec<String>,
 ) -> Result<Arc<CGrammar>> {
     let t0 = Instant::now();
@@ -348,31 +384,39 @@ pub fn grammars_from_json(
 
     ensure!(input.grammars.len() > 0, "empty grammars array");
 
-    let mut lexer_spec = LexerSpec::new()?;
-    let mut grammar = Grammar::new(None);
+    let mut ctx = CompileCtx {
+        tok_env: tok_env.clone(),
+        limits,
+        lexer_spec: LexerSpec::new()?,
+        grammar: Grammar::new(None),
+        grammar_by_idx: HashMap::new(),
+        grammar_roots: vec![(SymIdx::BOGUS, LexemeClass::ROOT); input.grammars.len()],
+    };
 
-    let mut grammar_by_idx = HashMap::new();
     for (idx, grm) in input.grammars.iter().enumerate() {
         if let Some(n) = &grm.name {
             let n = GrammarId::Name(n.to_string());
-            if grammar_by_idx.contains_key(&n) {
+            if ctx.grammar_by_idx.contains_key(&n) {
                 bail!("duplicate grammar name: {}", n);
             }
-            grammar_by_idx.insert(n, idx);
+            ctx.grammar_by_idx.insert(n, idx);
         }
-        grammar_by_idx.insert(GrammarId::Index(idx), idx);
+        ctx.grammar_by_idx.insert(GrammarId::Index(idx), idx);
     }
 
-    let root_syms = input
-        .grammars
-        .into_iter()
-        .map(|g| grammar_from_json(tok_env, &mut limits, &mut grammar, &mut lexer_spec, g))
-        .collect::<Result<Vec<_>>>()?;
+    for (idx, grm) in input.grammars.into_iter().enumerate() {
+        let v = grammar_from_json(&mut ctx, grm)?;
+        ctx.grammar_roots[idx] = v;
+    }
 
-    let grammar_by_idx: HashMap<GrammarId, (SymIdx, LexemeClass)> = grammar_by_idx
+    let grammar_by_idx: HashMap<GrammarId, (SymIdx, LexemeClass)> = ctx
+        .grammar_by_idx
         .into_iter()
-        .map(|(k, v)| (k, root_syms[v]))
+        .map(|(k, v)| (k, ctx.grammar_roots[v]))
         .collect();
+
+    let mut grammar = ctx.grammar;
+    let mut lexer_spec = ctx.lexer_spec;
 
     grammar.resolve_grammar_refs(&mut lexer_spec, &grammar_by_idx)?;
 

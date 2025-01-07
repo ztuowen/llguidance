@@ -3,6 +3,7 @@ use super::{
     lexer::{lex_lark, Lexeme, Location, Token},
 };
 use anyhow::{anyhow, bail, ensure, Result};
+use toktrie::bytes::limit_str;
 
 /// The parser struct that holds the tokens and current position.
 pub struct Parser {
@@ -363,9 +364,11 @@ impl Parser {
             let regex = inner[1..last_slash_idx].to_string();
             Ok(Value::LiteralRegex(regex, flags))
         } else if let Some(grammar_ref) = self.match_token_with_value(Token::GrammarRef) {
-            Ok(Value::GrammarRef(grammar_ref.value.clone()))
+            Ok(Value::GrammarRef(grammar_ref.value))
         } else if let Some(special_token) = self.match_token_with_value(Token::SpecialToken) {
-            Ok(Value::SpecialToken(special_token.value.clone()))
+            Ok(Value::SpecialToken(special_token.value))
+        } else if let Some(json_val) = self.match_token_with_value(Token::KwJson) {
+            Ok(Value::Json(json_val.value))
         } else if let Some(name_token) = self
             .match_token_with_value(Token::Rule)
             .or_else(|| self.match_token_with_value(Token::Token))
@@ -378,11 +381,11 @@ impl Parser {
                 }
                 self.expect_token(Token::RBrace)?;
                 Ok(Value::TemplateUsage {
-                    name: name_token.value.clone(),
+                    name: name_token.value,
                     values,
                 })
             } else {
-                Ok(Value::Name(name_token.value.clone()))
+                Ok(Value::Name(name_token.value))
             }
         } else {
             bail!("Expected value")
@@ -519,7 +522,7 @@ pub fn parse_lark(input: &str) -> Result<Vec<Item>> {
                 tok.line,
                 tok.column,
                 e,
-                tok.value,
+                limit_str(&tok.value, 100),
                 tok.token
             )
         } else {
