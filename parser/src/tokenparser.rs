@@ -9,7 +9,7 @@ use crate::{
 };
 use anyhow::{ensure, Result};
 use serde_json::json;
-use toktrie::{InferenceCapabilities, SimpleVob, TokEnv, TokenId};
+use toktrie::{InferenceCapabilities, SimpleVob, TokEnv, TokenId, INVALID_TOKEN};
 
 #[derive(Clone)]
 pub struct TokenParser {
@@ -386,7 +386,7 @@ impl TokenParser {
             return Err(self.stop_for_parser_error("", s));
         }
 
-        if self.is_accepting() {
+        if self.eos_token != INVALID_TOKEN && self.is_accepting() {
             allowed_tokens.allow_token(self.eos_token);
         }
 

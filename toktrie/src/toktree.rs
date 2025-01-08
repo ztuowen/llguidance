@@ -211,6 +211,8 @@ pub struct TrieNode {
     bits2: u32,
 }
 
+pub const INVALID_TOKEN: TokenId = 0xffff_ffff;
+
 const NO_TOKEN: u32 = 0xffffff;
 
 impl TrieNode {
@@ -345,7 +347,7 @@ impl TokTrie {
         let max_tok = std::cmp::min(max_examples, num_set);
         let mut token_names = Vec::new();
         // make sure we include EOS first if it's allowed
-        if ts1.is_allowed(self.info.tok_eos) {
+        if self.info.tok_eos != INVALID_TOKEN && ts1.is_allowed(self.info.tok_eos) {
             token_names.push("EOS".to_string());
         }
         for idx in 0..self.vocab_size() {

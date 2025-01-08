@@ -16,7 +16,7 @@ use derivre::{AlphabetInfo, RegexAst, StateID};
 use hashbrown::HashSet;
 use instant::Instant;
 use serde::{Deserialize, Serialize};
-use toktrie::{Recognizer, SimpleVob, TokEnv, TokTrie};
+use toktrie::{Recognizer, SimpleVob, TokEnv, TokTrie, INVALID_TOKEN};
 
 use crate::{
     api::{ParserLimits, StopReason},
@@ -663,8 +663,9 @@ impl ParserState {
             let _ = self.flush_lexer();
         }
 
-        if start.is_empty() && self.lexer_allows_eos() {
-            set.allow_token(computer.trie().eos_token());
+        let eos = computer.trie().eos_token();
+        if eos != INVALID_TOKEN && start.is_empty() && self.lexer_allows_eos() {
+            set.allow_token(eos);
         }
 
         self.stats.compute_time_us += t0.elapsed().as_micros() as u64;
