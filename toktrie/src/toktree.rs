@@ -57,16 +57,6 @@ impl TokRxInfo {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum SpecialToken {
-    Unknown,
-    Padding,
-    Separator,
-    BeginningOfSentence,
-    EndOfSentence,
-    EndOfTurn,
-}
-
 pub trait Recognizer {
     /// for _ in 0..num { stack.pop() }
     fn pop_bytes(&mut self, num: usize);
@@ -83,8 +73,6 @@ pub trait Recognizer {
             false
         }
     }
-    /// check if stack.top() transitions via tok to a viable state
-    fn special_allowed(&mut self, tok: SpecialToken) -> bool;
     /// Called when iteration over the trie is finished
     /// Stack has exactly one element then, except when iteration started from non-root node.
     /// In that case, the stack may have more than one element, and trie_finished() needs to pop the excessive elements.
@@ -327,13 +315,6 @@ impl TokTrie {
 
     pub fn info(&self) -> &TokRxInfo {
         &self.info
-    }
-
-    pub fn special_token(&self, tok: SpecialToken) -> TokenId {
-        match tok {
-            SpecialToken::EndOfSentence => self.info.tok_eos,
-            _ => panic!("non-EOS special_token() called"), // TODO?
-        }
     }
 
     pub fn eos_token(&self) -> TokenId {
@@ -743,23 +724,6 @@ impl TokTrie {
             .and_then(|n| n.token_id())
     }
 
-    pub fn compute_bias(&self, r: &mut impl Recognizer, logits: &mut SimpleVob) {
-        self.compute_bias_ext(r, logits, &[]);
-    }
-
-    pub fn compute_bias_ext(&self, r: &mut impl Recognizer, logits: &mut SimpleVob, start: &[u8]) {
-        logits.set_all(false);
-        if start.is_empty() {
-            // EOS is only allowed if there is no forced byte prefix
-            for tok in vec![SpecialToken::EndOfSentence] {
-                if r.special_allowed(tok) {
-                    logits.allow_token(self.special_token(tok))
-                }
-            }
-        }
-        self.add_bias(r, logits, start);
-    }
-
     /// Return how many tokens and bytes need to chopped off tokens,
     /// so that we do not limit all possible future tokenizations matching the recognizer.
     pub fn chop_tokens(&self, r: &mut impl Recognizer, tokens: &[TokenId]) -> (usize, usize) {
@@ -1122,9 +1086,6 @@ impl FixedRecognizer {
 impl Recognizer for FixedRecognizer {
     fn collapse(&mut self) {}
     fn trie_finished(&mut self) {}
-    fn special_allowed(&mut self, _: SpecialToken) -> bool {
-        false
-    }
 
     fn pop_bytes(&mut self, num: usize) {
         self.bytes_ptr -= num;

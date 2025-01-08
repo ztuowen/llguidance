@@ -1,4 +1,4 @@
-use crate::toktree::{Recognizer, SpecialToken};
+use crate::toktree::Recognizer;
 use std::fmt::Debug;
 
 pub trait FunctionalRecognizer<S: Copy> {
@@ -6,8 +6,6 @@ pub trait FunctionalRecognizer<S: Copy> {
     fn initial(&self) -> S;
     /// Extend the recognizer with given byte if allowed.
     fn try_append(&self, state: S, byte: u8) -> Option<S>;
-    /// Check if given special token is allowed in given state.
-    fn special_allowed(&self, state: S, tok: SpecialToken) -> bool;
     /// Get error message if recognizer is in error state.
     fn get_error(&self, _state: S) -> Option<String> {
         None
@@ -69,10 +67,6 @@ impl<S: Copy + Debug, R: FunctionalRecognizer<S>> Recognizer for StackRecognizer
         self.stack_ptr = 0;
     }
 
-    fn special_allowed(&mut self, tok: SpecialToken) -> bool {
-        self.rec.special_allowed(self.stack[self.stack_ptr], tok)
-    }
-
     fn get_error(&mut self) -> Option<String> {
         self.rec.get_error(self.stack[self.stack_ptr])
     }
@@ -100,9 +94,5 @@ impl FunctionalRecognizer<()> for AnythingGoes {
 
     fn try_append(&self, state: (), _byte: u8) -> Option<()> {
         Some(state)
-    }
-
-    fn special_allowed(&self, _state: (), _tok: SpecialToken) -> bool {
-        true
     }
 }

@@ -21,8 +21,6 @@ pub trait Recognizer {
     fn collapse(&mut self);
     /// check if stack.top() transitions via byte to a viable state
     fn byte_allowed(&mut self, byte: u8) -> bool;
-    /// check if stack.top() transitions via tok to a viable state
-    fn special_allowed(&mut self, tok: SpecialToken) -> bool;
     /// Called when iteration over the trie is finished
     /// Stack has exactly one element then.
     fn trie_finished(&mut self);
@@ -45,8 +43,6 @@ pub trait FunctionalRecognizer<S: Copy> {
     fn append(&self, state: S, byte: u8) -> S;
     /// Check if given byte is allowed in given state.
     fn byte_allowed(&self, state: S, byte: u8) -> bool;
-    /// Check if given special token is allowed in given state.
-    fn special_allowed(&self, state: S, tok: SpecialToken) -> bool;
 }
 ```
 

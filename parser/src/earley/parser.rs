@@ -16,7 +16,7 @@ use derivre::{AlphabetInfo, RegexAst, StateID};
 use hashbrown::HashSet;
 use instant::Instant;
 use serde::{Deserialize, Serialize};
-use toktrie::{Recognizer, SimpleVob, SpecialToken, TokEnv, TokTrie};
+use toktrie::{Recognizer, SimpleVob, TokEnv, TokTrie};
 
 use crate::{
     api::{ParserLimits, StopReason},
@@ -2149,11 +2149,6 @@ impl<'a> Recognizer for ParserRecognizer<'a> {
     fn collapse(&mut self) {
         // This actually means "commit" - can no longer backtrack past this point.
         // However, this parser ignores it.
-    }
-
-    fn special_allowed(&mut self, _tok: SpecialToken) -> bool {
-        // handle EOS logic outside
-        unreachable!("special_allowed")
     }
 
     fn trie_started(&mut self, lbl: &str) {
