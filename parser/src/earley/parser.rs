@@ -28,7 +28,7 @@ use super::{
     grammar::{CGrammar, CSymIdx, CSymbol, RhsPtr},
     lexer::{LexerResult, PreLexeme},
     lexerspec::{Lexeme, LexemeIdx, LexemeSpec, LexerSpec},
-    regexvec::LexerStats,
+    regexvec::{LexemeSet, LexerStats},
 };
 
 const TRACE: bool = false;
@@ -254,7 +254,7 @@ struct Scratch {
     grammar_stack: Vec<GrammarStackNode>,
 
     push_allowed_grammar_ids: SimpleVob,
-    push_allowed_lexemes: SimpleVob,
+    push_allowed_lexemes: LexemeSet,
     push_grm_top: GrammarStackPtr,
     push_lexeme_idx: LexemeIdx,
 
@@ -569,7 +569,7 @@ impl ParserState {
                 .lexer()
                 .possible_lexemes(r.rows[0].lexer_start_state)
                 .clone();
-            possible.set(skip_id.as_usize(), false);
+            possible.remove(skip_id.as_usize());
             let new_state = r.lexer_mut().start_state(&possible);
             r.rows[0].lexer_start_state = new_state;
             debug!(
@@ -1027,7 +1027,7 @@ impl ParserState {
                         class_ok
                     );
                     if info_tokens < max_tokens && class_ok {
-                        limit.allow_token(idx);
+                        limit.add(idx as usize);
                     } else {
                         num_limit += 1;
                     }
@@ -1458,7 +1458,7 @@ impl ParserState {
     fn process_agenda(&mut self, curr_idx: usize, lexeme: &Lexeme) {
         let mut agenda_ptr = self.scratch.row_start;
 
-        self.scratch.push_allowed_lexemes.set_all(false);
+        self.scratch.push_allowed_lexemes.clear();
         self.scratch.push_allowed_grammar_ids.set_all(false);
 
         // Agenda retrieval is a simplification of Kallmeyer 2018.
@@ -1541,7 +1541,7 @@ impl ParserState {
                     self.scratch
                         .push_allowed_grammar_ids
                         .set(sym_data.props.grammar_id.as_usize(), true);
-                    self.scratch.push_allowed_lexemes.set(lx.as_usize(), true);
+                    self.scratch.push_allowed_lexemes.add(lx.as_usize());
                 }
 
                 // The completion inference rule for nullable symbols
@@ -1596,7 +1596,7 @@ impl ParserState {
                     .get(grammar_id.as_usize())
                 {
                     let skip = self.lexer_spec().skip_id(grammar_id);
-                    self.scratch.push_allowed_lexemes.set(skip.as_usize(), true);
+                    self.scratch.push_allowed_lexemes.add(skip.as_usize());
                 }
 
                 self.shared_box
@@ -1804,9 +1804,9 @@ impl ParserState {
         Lexeme::new(pre_lexeme.idx, bytes, pre_lexeme.hidden_len)
     }
 
-    fn has_forced_bytes(&self, allowed_lexemes: &SimpleVob, bytes: &[u8]) -> bool {
+    fn has_forced_bytes(&self, allowed_lexemes: &LexemeSet, bytes: &[u8]) -> bool {
         // note that this is also used when computing token mask
-        if allowed_lexemes.is_zero() {
+        if allowed_lexemes.is_empty() {
             return false;
         }
         let mut matched_something = false;

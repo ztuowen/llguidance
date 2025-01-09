@@ -5,7 +5,7 @@ use toktrie::{bytes::limit_str, SimpleVob, TokTrie, TokenId};
 
 use crate::{api::ParserLimits, id32_type};
 
-use super::regexvec::RegexVec;
+use super::regexvec::{LexemeSet, RegexVec};
 
 #[derive(Clone)]
 pub struct LexerSpec {
@@ -148,7 +148,11 @@ impl LexerSpec {
         Ok(self.current_class)
     }
 
-    pub fn alloc_lexeme_set(&self) -> SimpleVob {
+    pub fn alloc_lexeme_set(&self) -> LexemeSet {
+        LexemeSet::new(self.lexemes.len())
+    }
+
+    fn alloc_lexeme_vob(&self) -> SimpleVob {
         SimpleVob::alloc(self.lexemes.len())
     }
 
@@ -156,17 +160,17 @@ impl LexerSpec {
         SimpleVob::alloc(self.skip_by_class.len())
     }
 
-    pub fn all_lexemes(&self) -> SimpleVob {
+    pub fn all_lexemes(&self) -> LexemeSet {
         let mut v = self.alloc_lexeme_set();
         self.lexemes[0..self.lexemes.len() - self.num_extra_lexemes]
             .iter()
             .enumerate()
-            .for_each(|(idx, _)| v.set(idx, true));
+            .for_each(|(idx, _)| v.add(idx));
         v
     }
 
     pub fn lazy_lexemes(&self) -> SimpleVob {
-        let mut v = self.alloc_lexeme_set();
+        let mut v = self.alloc_lexeme_vob();
         for (idx, lex) in self.lexemes.iter().enumerate() {
             if lex.lazy {
                 v.set(idx, true);
@@ -176,7 +180,7 @@ impl LexerSpec {
     }
 
     pub fn eos_ending_lexemes(&self) -> SimpleVob {
-        let mut v = self.alloc_lexeme_set();
+        let mut v = self.alloc_lexeme_vob();
         for (idx, lex) in self.lexemes.iter().enumerate() {
             if lex.ends_at_eos {
                 v.set(idx, true);
@@ -185,14 +189,14 @@ impl LexerSpec {
         v
     }
 
-    pub fn token_range_lexemes(&self, possible: &SimpleVob) -> Vec<&LexemeSpec> {
+    pub fn token_range_lexemes(&self, possible: &LexemeSet) -> Vec<&LexemeSpec> {
         let mut res = Vec::new();
-        possible.iter_set_entries(|idx| {
-            let spec = &self.lexemes[idx];
+        for idx in possible.iter() {
+            let spec = &self.lexemes[idx as usize];
             if spec.token_ranges.len() > 0 {
                 res.push(spec);
             }
-        });
+        }
         res
     }
 
@@ -378,7 +382,7 @@ impl LexerSpec {
         }
     }
 
-    pub fn dbg_lexeme_set(&self, vob: &SimpleVob) -> String {
+    pub fn dbg_lexeme_set(&self, vob: &LexemeSet) -> String {
         format!(
             "Lexemes( {} )",
             vob.iter()
