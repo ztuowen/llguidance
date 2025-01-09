@@ -97,6 +97,10 @@ impl LexemeSpec {
         }
         f
     }
+
+    pub fn contains_special_token(&self, token: TokenId) -> bool {
+        self.token_ranges.iter().any(|range| range.contains(&token))
+    }
 }
 
 impl Debug for LexemeSpec {

@@ -37,7 +37,7 @@ fn check_grammar(
     let mut seen_temp = temp == 0.0;
 
     for _ in 0..200 {
-        let res = constraint.compute_mask().unwrap();
+        let res = constraint.compute_mask().unwrap().clone();
 
         if let Some(t) = res.temperature {
             assert!(
@@ -76,6 +76,7 @@ fn check_grammar(
                     tok,
                     tok_env.tok_trie().token_dbg(tok)
                 );
+                assert!(constraint.validate_tokens_raw(&[tok]).unwrap() == 0);
                 gen_tokens.remove(0);
             }
 

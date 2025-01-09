@@ -16,7 +16,7 @@ use derivre::{AlphabetInfo, RegexAst, StateID};
 use hashbrown::HashSet;
 use instant::Instant;
 use serde::{Deserialize, Serialize};
-use toktrie::{Recognizer, SimpleVob, TokEnv, TokTrie, INVALID_TOKEN};
+use toktrie::{parse_numeric_token, Recognizer, SimpleVob, TokEnv, TokTrie, INVALID_TOKEN};
 
 use crate::{
     api::{ParserLimits, StopReason},
@@ -27,7 +27,7 @@ use crate::{
 use super::{
     grammar::{CGrammar, CSymIdx, CSymbol, RhsPtr},
     lexer::{LexerResult, PreLexeme},
-    lexerspec::{Lexeme, LexemeIdx, LexerSpec},
+    lexerspec::{Lexeme, LexemeIdx, LexemeSpec, LexerSpec},
     regexvec::LexerStats,
 };
 
@@ -874,12 +874,37 @@ impl ParserState {
 
         self.run_speculative("validate_bytes", |state| {
             let mut r = ParserRecognizer { state };
-            for &b in tok_bytes {
-                if !r.try_push_byte(b) {
-                    return prefix_len;
+            let mut idx = 0;
+            while idx < tok_bytes.len() {
+                let b = tok_bytes[idx];
+                if b == TokTrie::SPECIAL_TOKEN_MARKER {
+                    if !r.state.flush_lexer() {
+                        break;
+                    }
+                    if let Some((n_bytes, token_id)) = parse_numeric_token(&tok_bytes[(idx + 1)..])
+                    {
+                        if r.state
+                            .token_range_lexemes()
+                            .iter()
+                            .any(|r| r.contains_special_token(token_id))
+                        {
+                            for b in &tok_bytes[idx..(idx + n_bytes + 1)] {
+                                let ok = r.try_push_byte(*b);
+                                assert!(ok);
+                            }
+                            idx += n_bytes + 1;
+                            continue;
+                        }
+                    }
+                    // if we failed to account for the whole token, stop
+                    break;
                 }
-                prefix_len += 1;
+                if !r.try_push_byte(b) {
+                    return prefix_len + idx;
+                }
+                idx += 1;
             }
+            prefix_len += idx;
             if check_eos {
                 if state.is_accepting_inner() {
                     prefix_len += 1;
@@ -1042,6 +1067,12 @@ impl ParserState {
         return Ok(0);
     }
 
+    fn token_range_lexemes(&self) -> Vec<&LexemeSpec> {
+        let state = self.lexer_state().lexer_state;
+        let possible = self.lexer().possible_lexemes(state);
+        self.lexer_spec().token_range_lexemes(possible)
+    }
+
     /// force_bytes() forces bytes into the parser, definitively.
     /// They must be, at each point, the only bytes allowed by
     /// the parser.  force_bytes() returns a 'Vec' of the bytes pushed.
@@ -1053,9 +1084,7 @@ impl ParserState {
                 debug!("  forced: {:?} 0x{:x}", b as char, b);
                 if b == TokTrie::SPECIAL_TOKEN_MARKER {
                     assert!(!s.has_pending_lexeme_bytes());
-                    let state = s.lexer_state().lexer_state;
-                    let possible = s.lexer().possible_lexemes(state);
-                    let specs = s.lexer_spec().token_range_lexemes(possible);
+                    let specs = s.token_range_lexemes();
                     let mut unique_token_id = None;
                     for s in specs {
                         if s.token_ranges.len() == 1 {
@@ -2339,7 +2368,16 @@ impl Parser {
 
     /// Returns how many bytes can be applied.
     pub fn validate_bytes(&mut self, tok_bytes: &[u8], check_eos: bool) -> usize {
-        self.with_shared(|state| state.validate_bytes(tok_bytes, check_eos))
+        self.with_shared(|state| {
+            let r = state.validate_bytes(tok_bytes, check_eos);
+            debug!(
+                "validate_bytes: {:?} -> {}/{}",
+                String::from_utf8_lossy(tok_bytes),
+                r,
+                tok_bytes.len()
+            );
+            r
+        })
     }
 
     pub fn log_row_infos(&self, label: &str) {

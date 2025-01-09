@@ -88,6 +88,24 @@ pub trait Recognizer {
     fn save_stats(&mut self, _nodes_walked: usize) {}
 }
 
+/// Parse a special token of the form \xFF [ 1 2 3 4 ]
+/// The initial \xFF is not included in the input.
+/// Returns the number of bytes consumed and the token id.
+pub fn parse_numeric_token(s: &[u8]) -> Option<(usize, TokenId)> {
+    let spec_len = s[0..std::cmp::min(s.len(), 20)]
+        .iter()
+        .position(|&x| x == ']' as u8);
+    if let Some(spec_len) = spec_len {
+        let inner_bytes = &s[1..spec_len];
+        if let Ok(inner_str) = std::str::from_utf8(inner_bytes) {
+            if let Ok(id) = u32::from_str_radix(inner_str, 10) {
+                return Some((spec_len + 1, id as TokenId));
+            }
+        }
+    }
+    None
+}
+
 pub trait TokenizerEnv: Send {
     /// Associated trie.
     fn tok_trie(&self) -> &TokTrie;
@@ -126,20 +144,12 @@ pub trait TokenizerEnv: Send {
                         idx += spec_len;
                     }
                 }
-            } else if idx + 2 < s.len() && s[idx] == '[' as u8 {
+            } else if idx < s.len() {
                 // tokenize \xff[1234] as token 1234
-                let spec_len = s[idx..std::cmp::min(s.len(), idx + 20)]
-                    .iter()
-                    .position(|&x| x == ']' as u8);
-                if let Some(spec_len) = spec_len {
-                    let inner_bytes = &s[idx + 1..idx + spec_len];
-                    if let Ok(inner_str) = std::str::from_utf8(inner_bytes) {
-                        if let Ok(id) = u32::from_str_radix(inner_str, 10) {
-                            if id < trie.vocab_size() as u32 {
-                                result.push(id as TokenId);
-                                idx += spec_len + 1;
-                            }
-                        }
+                if let Some((n_bytes, tok_id)) = parse_numeric_token(&s[idx..]) {
+                    if tok_id < trie.vocab_size() as u32 {
+                        result.push(tok_id);
+                        idx += n_bytes;
                     }
                 }
             }

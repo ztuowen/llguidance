@@ -593,6 +593,12 @@ fn test_ll_special_token() {
         "</s>",
         &["</s>", "a"],
     );
+
+    check_lark_grammar(
+        r#"start: /.*/ <|system|>
+        "#,
+        &["", "✖<|end|>‧foo‧✖<|end|>‧<|system|>"],
+    );
 }
 
 #[test]
