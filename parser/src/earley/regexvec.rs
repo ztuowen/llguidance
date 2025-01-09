@@ -58,46 +58,56 @@ impl Debug for LexerStats {
 
 #[derive(Clone, Debug)]
 pub struct LexemeSet {
-    vob: SimpleVob,
+    vob: Vec<u16>,
 }
 
 impl LexemeSet {
     pub fn new(size: usize) -> Self {
-        LexemeSet {
-            vob: SimpleVob::alloc(size),
-        }
+        assert!(size < 0xffff);
+        LexemeSet { vob: vec![] }
     }
 
     pub fn from_vob(vob: &SimpleVob) -> Self {
-        LexemeSet { vob: vob.clone() }
+        LexemeSet {
+            vob: vob.iter().map(|e| e as u16).collect(),
+        }
     }
 
     pub fn is_empty(&self) -> bool {
-        self.vob.is_zero()
+        self.vob.is_empty()
     }
 
+    #[inline(always)]
     pub fn iter(&self) -> impl Iterator<Item = u32> + '_ {
-        self.vob.iter()
+        self.vob.iter().map(|e| *e as u32)
     }
 
     pub fn add(&mut self, idx: usize) {
-        self.vob.set(idx, true);
-    }
-
-    pub fn remove(&mut self, idx: usize) {
-        self.vob.set(idx, false);
+        let idx = idx as u16;
+        match self.vob.binary_search(&idx) {
+            Ok(_) => { /* Already present */ }
+            Err(pos) => self.vob.insert(pos, idx),
+        }
     }
 
     pub fn first(&self) -> Option<usize> {
-        self.vob.first_bit_set()
+        self.vob.first().map(|e| *e as usize)
+    }
+
+    pub fn remove(&mut self, idx: usize) {
+        let idx = idx as u16;
+        if let Ok(pos) = self.vob.binary_search(&idx) {
+            self.vob.remove(pos);
+        }
     }
 
     pub fn contains(&self, idx: usize) -> bool {
-        self.vob.get(idx)
+        let idx = idx as u16;
+        self.vob.binary_search(&idx).is_ok()
     }
 
     pub fn clear(&mut self) {
-        self.vob.set_all(false);
+        self.vob.clear();
     }
 }
 
