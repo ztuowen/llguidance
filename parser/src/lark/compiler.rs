@@ -406,7 +406,7 @@ impl Compiler {
                         return Ok(self.builder.add_node(Node::Lexeme {
                             rx: RegexSpec::RegexId(rx_id),
                             contextual: None,
-                            temperature: None,
+                            temperature: rule.temperature,
                             json_string: None,
                             json_raw: None,
                             json_allowed_escapes: None,

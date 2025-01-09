@@ -111,6 +111,10 @@ impl SymbolProps {
             outp.push_str(format!(" max_tokens={}", props.max_tokens).as_str());
         }
 
+        if props.temperature != 0.0 {
+            outp.push_str(format!(" temp={:.2}", props.temperature).as_str());
+        }
+
         outp
     }
 }

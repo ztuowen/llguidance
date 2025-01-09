@@ -116,6 +116,8 @@ fn grammar_from_json(
             lark_to_llguidance(input.lark_grammar.as_ref().unwrap())?
         };
 
+        // println!("GRM: {}", serde_json::to_string(&new_grm).unwrap());
+
         additional_grammars = new_grm.grammars.drain(1..).collect::<Vec<_>>();
         for (off, g) in additional_grammars.iter().enumerate() {
             let name = g

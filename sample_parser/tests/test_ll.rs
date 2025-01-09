@@ -299,6 +299,21 @@ fn test_ll_temperature() {
         "#,
         &["", "[‧]"],
     );
+
+    check_lark_grammar(
+        r#"start: gen
+           gen[temperature=0.5, stop=""]: /.*/
+        "#,
+        &["", "foo‧≺EOS≻"],
+    );
+
+    check_lark_grammar(
+        r#"start: foo | bar
+           foo[temperature=0.5]: "foo"
+           bar[temperature=0.5]: "bar"
+        "#,
+        &["", "foo"],
+    );
 }
 
 #[test]
