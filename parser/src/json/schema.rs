@@ -2,9 +2,9 @@ use anyhow::{anyhow, bail, Result};
 use derivre::RegexAst;
 use hashbrown::{HashMap, HashSet};
 use indexmap::{IndexMap, IndexSet};
-use referencing::{Draft, Registry, Resolver, ResourceRef};
+use referencing::{Draft, Registry, Resolver, Resource, ResourceRef, Retrieve};
 use serde_json::Value;
-use std::{cell::RefCell, mem, rc::Rc};
+use std::{any::type_name_of_val, cell::RefCell, mem, rc::Rc};
 
 use super::formats::lookup_format;
 use super::numeric::Decimal;
@@ -550,11 +550,33 @@ impl<'a> Context<'a> {
     }
 }
 
+#[derive(Clone)]
+pub struct RetrieveWrapper(pub Rc<dyn Retrieve>);
+impl RetrieveWrapper {
+    pub fn new(retrieve: Rc<dyn Retrieve>) -> Self {
+        RetrieveWrapper(retrieve)
+    }
+}
+impl std::ops::Deref for RetrieveWrapper {
+    type Target = dyn Retrieve;
+    fn deref(&self) -> &Self::Target {
+        self.0.as_ref()
+    }
+}
+impl std::fmt::Debug for RetrieveWrapper {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", type_name_of_val(&self.0))
+    }
+}
+
 fn draft_for(value: &Value) -> Draft {
     DEFAULT_DRAFT.detect(value).unwrap_or(DEFAULT_DRAFT)
 }
 
-pub fn build_schema(contents: Value) -> Result<(Schema, HashMap<String, Schema>)> {
+pub fn build_schema(
+    contents: Value,
+    retriever: Option<&dyn Retrieve>,
+) -> Result<(Schema, HashMap<String, Schema>)> {
     if let Some(b) = contents.as_bool() {
         if b {
             return Ok((Schema::Any, HashMap::new()));
@@ -567,7 +589,17 @@ pub fn build_schema(contents: Value) -> Result<(Schema, HashMap<String, Schema>)
     let resource = draft.create_resource(contents);
     let base_uri = resource.id().unwrap_or(DEFAULT_ROOT_URI).to_string();
 
-    let registry = Registry::try_new(&base_uri, resource)?;
+    let registry = {
+        // Weirdly no apparent way to instantiate a new registry with a retriever, so we need to
+        // make an empty one and then add the retriever + resource that may depend on said retriever
+        let empty_registry =
+            Registry::try_from_resources(std::iter::empty::<(String, Resource)>())?;
+        empty_registry.try_with_resource_and_retriever(
+            &base_uri,
+            resource,
+            retriever.unwrap_or(&referencing::DefaultRetriever),
+        )?
+    };
 
     let resolver = registry.try_resolver(&base_uri)?;
     let ctx = Context {
@@ -1173,5 +1205,75 @@ fn opt_min<T: PartialOrd>(a: Option<T>, b: Option<T>) -> Option<T> {
         (Some(a), None) => Some(a),
         (None, Some(b)) => Some(b),
         (None, None) => None,
+    }
+}
+
+#[cfg(test)]
+mod test_retriever {
+    use super::{build_schema, Schema};
+    use referencing::{Retrieve, Uri};
+    use serde_json::{json, Value};
+    use std::fmt;
+
+    #[derive(Debug, Clone)]
+    struct TestRetrieverError(String);
+    impl fmt::Display for TestRetrieverError {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(f, "Could not retrieve URI: {}", self.0)
+        }
+    }
+    impl std::error::Error for TestRetrieverError {}
+
+    struct TestRetriever {
+        schemas: std::collections::HashMap<String, serde_json::Value>,
+    }
+    impl Retrieve for TestRetriever {
+        fn retrieve(
+            &self,
+            uri: &Uri<&str>,
+        ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
+            let key = uri.as_str();
+            match self.schemas.get(key) {
+                Some(schema) => Ok(schema.clone()),
+                None => Err(Box::new(TestRetrieverError(key.to_string()))),
+            }
+        }
+    }
+
+    #[test]
+    fn test_retriever() {
+        let key: &str = "http://example.com/schema";
+
+        let schema = json!({
+            "$ref": key
+        });
+        let retriever = TestRetriever {
+            schemas: vec![(
+                key.to_string(),
+                json!({
+                    "type": "string"
+                }),
+            )]
+            .into_iter()
+            .collect(),
+        };
+        let (schema, defs) = build_schema(schema, Some(&retriever)).unwrap();
+        match schema {
+            Schema::Ref { uri } => {
+                assert_eq!(uri, key);
+            }
+            _ => panic!("Unexpected schema: {:?}", schema),
+        }
+        assert_eq!(defs.len(), 1);
+        let val = defs.get(key).unwrap();
+        // poor-man's partial_eq
+        match val {
+            Schema::String {
+                min_length: 0,
+                max_length: None,
+                regex: None,
+            } => {}
+            _ => panic!("Unexpected schema: {:?}", val),
+        }
     }
 }
