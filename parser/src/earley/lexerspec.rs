@@ -152,47 +152,36 @@ impl LexerSpec {
         LexemeSet::new(self.lexemes.len())
     }
 
-    fn alloc_lexeme_vob(&self) -> SimpleVob {
-        SimpleVob::alloc(self.lexemes.len())
-    }
-
     pub fn alloc_grammar_set(&self) -> SimpleVob {
         SimpleVob::alloc(self.skip_by_class.len())
     }
 
-    pub fn all_lexemes(&self) -> LexemeSet {
+    pub fn lexeme_set(&self, cond: impl Fn(&LexemeSpec) -> bool) -> LexemeSet {
         let mut v = self.alloc_lexeme_set();
-        self.lexemes[0..self.lexemes.len() - self.num_extra_lexemes]
-            .iter()
-            .enumerate()
-            .for_each(|(idx, _)| v.add(idx));
-        v
-    }
-
-    pub fn lazy_lexemes(&self) -> SimpleVob {
-        let mut v = self.alloc_lexeme_vob();
         for (idx, lex) in self.lexemes.iter().enumerate() {
-            if lex.lazy {
-                v.set(idx, true);
+            if cond(lex) {
+                v.add(LexemeIdx::new(idx));
             }
         }
         v
     }
 
-    pub fn eos_ending_lexemes(&self) -> SimpleVob {
-        let mut v = self.alloc_lexeme_vob();
-        for (idx, lex) in self.lexemes.iter().enumerate() {
-            if lex.ends_at_eos {
-                v.set(idx, true);
-            }
-        }
-        v
+    pub fn all_lexemes(&self) -> LexemeSet {
+        self.lexeme_set(|_| true)
+    }
+
+    pub fn lazy_lexemes(&self) -> LexemeSet {
+        self.lexeme_set(|lex| lex.lazy)
+    }
+
+    pub fn eos_ending_lexemes(&self) -> LexemeSet {
+        self.lexeme_set(|lex| lex.ends_at_eos)
     }
 
     pub fn token_range_lexemes(&self, possible: &LexemeSet) -> Vec<&LexemeSpec> {
         let mut res = Vec::new();
         for idx in possible.iter() {
-            let spec = &self.lexemes[idx as usize];
+            let spec = &self.lexemes[idx.as_usize()];
             if spec.token_ranges.len() > 0 {
                 res.push(spec);
             }
@@ -386,7 +375,7 @@ impl LexerSpec {
         format!(
             "Lexemes( {} )",
             vob.iter()
-                .map(|idx| format!("[{}]", idx))
+                .map(|idx| format!("[{}]", idx.as_usize()))
                 .collect::<Vec<_>>()
                 .join(", ")
         )

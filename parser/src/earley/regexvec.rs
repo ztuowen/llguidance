@@ -17,6 +17,8 @@ pub use derivre::{AlphabetInfo, ExprRef, NextByte, StateID};
 
 use crate::api::ParserLimits;
 
+use super::lexerspec::LexemeIdx;
+
 #[derive(Clone, Serialize, Deserialize, Default)]
 pub struct LexerStats {
     pub num_regexps: usize,
@@ -68,6 +70,10 @@ impl LexemeSet {
         }
     }
 
+    pub fn len(&self) -> usize {
+        self.vob.len()
+    }
+
     pub fn from_vob(vob: &SimpleVob) -> Self {
         LexemeSet { vob: vob.clone() }
     }
@@ -76,24 +82,25 @@ impl LexemeSet {
         self.vob.is_zero()
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = u32> + '_ {
-        self.vob.iter()
+    #[inline(always)]
+    pub fn iter(&self) -> impl Iterator<Item = LexemeIdx> + '_ {
+        self.vob.iter().map(|e| LexemeIdx::new(e as usize))
     }
 
-    pub fn add(&mut self, idx: usize) {
-        self.vob.set(idx, true);
+    pub fn add(&mut self, idx: LexemeIdx) {
+        self.vob.set(idx.as_usize(), true);
     }
 
-    pub fn remove(&mut self, idx: usize) {
-        self.vob.set(idx, false);
+    pub fn remove(&mut self, idx: LexemeIdx) {
+        self.vob.set(idx.as_usize(), false);
     }
 
-    pub fn first(&self) -> Option<usize> {
-        self.vob.first_bit_set()
+    pub fn first(&self) -> Option<LexemeIdx> {
+        self.vob.first_bit_set().map(LexemeIdx::new)
     }
 
-    pub fn contains(&self, idx: usize) -> bool {
-        self.vob.get(idx)
+    pub fn contains(&self, idx: LexemeIdx) -> bool {
+        self.vob.get(idx.as_usize())
     }
 
     pub fn clear(&mut self) {
@@ -108,7 +115,7 @@ pub struct RegexVec {
     next_byte: NextByteCache,
     relevance: RelevanceCache,
     alpha: AlphabetInfo,
-    lazy: SimpleVob,
+    lazy: LexemeSet,
     rx_list: Vec<ExprRef>,
     special_token_rx: Option<ExprRef>,
     rx_sets: VecHashCons,
@@ -123,10 +130,10 @@ pub struct RegexVec {
 #[derive(Clone, Debug)]
 pub struct StateDesc {
     pub state: StateID,
-    pub lowest_accepting: Option<usize>,
+    pub lowest_accepting: Option<LexemeIdx>,
     pub accepting: LexemeSet,
     pub possible: LexemeSet,
-    pub lowest_match: Option<(usize, usize)>,
+    pub lowest_match: Option<(LexemeIdx, usize)>,
     pub has_special_token: bool,
 
     possible_lookahead_len: Option<usize>,
@@ -150,7 +157,7 @@ impl RegexVec {
         &self.alpha
     }
 
-    pub fn lazy_regexes(&self) -> &SimpleVob {
+    pub fn lazy_regexes(&self) -> &LexemeSet {
         &self.lazy
     }
 
@@ -159,9 +166,9 @@ impl RegexVec {
     pub fn initial_state(&mut self, selected: &LexemeSet) -> StateID {
         let mut vec_desc = vec![];
         for idx in selected.iter() {
-            let rx = self.rx_list[idx as usize];
+            let rx = self.get_rx(idx);
             if rx != ExprRef::NO_MATCH {
-                Self::push_rx(&mut vec_desc, idx as usize, rx);
+                Self::push_rx(&mut vec_desc, idx, rx);
             }
         }
         self.insert_state(vec_desc)
@@ -229,7 +236,7 @@ impl RegexVec {
             return false;
         }
         for (idx, _) in iter_state(&self.rx_sets, state) {
-            if self.lazy[idx] {
+            if self.lazy.contains(idx) {
                 return false;
             }
         }
@@ -241,16 +248,16 @@ impl RegexVec {
     pub fn check_subsume(
         &mut self,
         state: StateID,
-        lexeme_idx: usize,
+        lexeme_idx: LexemeIdx,
         mut budget: u64,
     ) -> Result<bool> {
         let budget0 = budget;
         let t0 = instant::Instant::now();
         assert!(self.subsume_possible(state));
-        let small = self.rx_list[lexeme_idx];
+        let small = self.get_rx(lexeme_idx);
         let mut res = false;
         for (idx, e) in iter_state(&self.rx_sets, state) {
-            assert!(!self.lazy[idx]);
+            assert!(!self.lazy.contains(idx));
             let c0 = self.exprs.cost();
             let cache_failures = budget > budget0 / 2;
             let is_contained = self
@@ -293,7 +300,7 @@ impl RegexVec {
     // If there is no lazy regex, and all greedy lexemes have reached the end of
     // the lexeme, then it is the first greedy lexeme.  If neither of these
     // criteria produce a choice for "best", 'None' is returned.
-    fn lowest_match_inner(&mut self, state: StateID) -> Option<(usize, usize)> {
+    fn lowest_match_inner(&mut self, state: StateID) -> Option<(LexemeIdx, usize)> {
         // 'all_eoi' is true if all greedy lexemes match, that is, if we are at
         // the end of lexeme for all of them.  End of lexeme is called
         // "end of input" or EOI for consistency with the regex package.
@@ -316,7 +323,7 @@ impl RegexVec {
 
             // If this is the first lazy lexeme, we can cut things short.  The first
             // lazy lexeme is our lowest, or best, match.  We return it and are done.
-            if self.lazy[idx] {
+            if self.lazy.contains(idx) {
                 let len = self.exprs.possible_lookahead_len(e);
                 return Some((idx, len));
             }
@@ -357,7 +364,7 @@ impl RegexVec {
     /// Lazy regexes match as soon as they accept, while greedy only
     /// if they accept and force EOI.
     #[inline(always)]
-    pub fn lowest_match(&mut self, state: StateID) -> Option<(usize, usize)> {
+    pub fn lowest_match(&mut self, state: StateID) -> Option<(LexemeIdx, usize)> {
         self.state_descs[state.as_usize()].lowest_match
     }
 
@@ -472,7 +479,7 @@ impl RegexVec {
     pub(crate) fn new_with_exprset(
         exprset: &ExprSet,
         rx_list: &[ExprRef],
-        lazy: Option<SimpleVob>,
+        lazy: Option<LexemeSet>,
         special_token_rx: Option<ExprRef>,
         limits: &mut ParserLimits,
     ) -> Result<Self> {
@@ -510,7 +517,7 @@ impl RegexVec {
             next_byte: NextByteCache::new(),
             special_token_rx,
             relevance,
-            lazy: lazy.unwrap_or_else(|| SimpleVob::alloc(rx_list.len())),
+            lazy: lazy.unwrap_or_else(|| LexemeSet::new(rx_list.len())),
             exprs: exprset,
             alpha,
             rx_list,
@@ -534,6 +541,10 @@ impl RegexVec {
         Ok(r)
     }
 
+    fn get_rx(&self, idx: LexemeIdx) -> ExprRef {
+        self.rx_list[idx.as_usize()]
+    }
+
     fn append_state(&mut self, state_desc: StateDesc) {
         let mut new_states = vec![StateID::MISSING; self.alpha.len()];
         self.state_table.append(&mut new_states);
@@ -554,7 +565,7 @@ impl RegexVec {
             let mut state_desc = self.compute_state_desc(id);
             state_desc.lowest_match = self.lowest_match_inner(id);
             if let Some((idx, _)) = state_desc.lowest_match {
-                if Some(self.rx_list[idx]) == self.special_token_rx {
+                if Some(self.get_rx(idx)) == self.special_token_rx {
                     state_desc.has_special_token = true;
                 }
             }
@@ -595,8 +606,8 @@ impl RegexVec {
         res
     }
 
-    fn push_rx(vec_desc: &mut Vec<u32>, idx: usize, e: ExprRef) {
-        vec_desc.push(idx as u32);
+    fn push_rx(vec_desc: &mut Vec<u32>, idx: LexemeIdx, e: ExprRef) {
+        vec_desc.push(idx.as_usize() as u32);
         vec_desc.push(e.as_u32());
     }
 
@@ -669,11 +680,14 @@ impl Debug for RegexVec {
 fn iter_state<'a>(
     rx_sets: &'a VecHashCons,
     state: StateID,
-) -> impl Iterator<Item = (usize, ExprRef)> + 'a {
+) -> impl Iterator<Item = (LexemeIdx, ExprRef)> + 'a {
     let lst = rx_sets.get(state.as_u32());
-    (0..lst.len())
-        .step_by(2)
-        .map(move |idx| (lst[idx] as usize, ExprRef::new(lst[idx + 1])))
+    (0..lst.len()).step_by(2).map(move |idx| {
+        (
+            LexemeIdx::new(lst[idx] as usize),
+            ExprRef::new(lst[idx + 1]),
+        )
+    })
 }
 
 // #[test]

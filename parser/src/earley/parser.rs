@@ -569,7 +569,7 @@ impl ParserState {
                 .lexer()
                 .possible_lexemes(r.rows[0].lexer_start_state)
                 .clone();
-            possible.remove(skip_id.as_usize());
+            possible.remove(skip_id);
             let new_state = r.lexer_mut().start_state(&possible);
             r.rows[0].lexer_start_state = new_state;
             debug!(
@@ -1013,8 +1013,7 @@ impl ParserState {
             let mut num_limit = 0;
             {
                 let possible_lexemes = self.lexer().possible_lexemes(lex_state);
-                for idx in possible_lexemes.iter() {
-                    let lex = LexemeIdx::new(idx as usize);
+                for lex in possible_lexemes.iter() {
                     let lex_spec = self.lexer_spec().lexeme_spec(lex);
                     let max_tokens = lex_spec.max_tokens();
                     let class_ok = !pop_classes.contains(&lex_spec.class());
@@ -1027,7 +1026,7 @@ impl ParserState {
                         class_ok
                     );
                     if info_tokens < max_tokens && class_ok {
-                        limit.add(idx as usize);
+                        limit.add(lex);
                     } else {
                         num_limit += 1;
                     }
@@ -1541,7 +1540,7 @@ impl ParserState {
                     self.scratch
                         .push_allowed_grammar_ids
                         .set(sym_data.props.grammar_id.as_usize(), true);
-                    self.scratch.push_allowed_lexemes.add(lx.as_usize());
+                    self.scratch.push_allowed_lexemes.add(lx);
                 }
 
                 // The completion inference rule for nullable symbols
@@ -1596,7 +1595,7 @@ impl ParserState {
                     .get(grammar_id.as_usize())
                 {
                     let skip = self.lexer_spec().skip_id(grammar_id);
-                    self.scratch.push_allowed_lexemes.add(skip.as_usize());
+                    self.scratch.push_allowed_lexemes.add(skip);
                 }
 
                 self.shared_box
@@ -1811,7 +1810,7 @@ impl ParserState {
         }
         let mut matched_something = false;
         for lexeme_idx in allowed_lexemes.iter() {
-            let lex_spec = &self.lexer_spec().lexemes[lexeme_idx as usize];
+            let lex_spec = &self.lexer_spec().lexemes[lexeme_idx.as_usize()];
             if lex_spec.is_skip && matches!(lex_spec.rx, RegexAst::NoMatch) {
                 continue;
             }
