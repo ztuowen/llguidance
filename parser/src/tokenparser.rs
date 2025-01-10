@@ -87,7 +87,7 @@ impl TokenParser {
             limits.clone(),
             extra_lexemes,
         )?;
-        let parser = Parser::new(compiled_grammar, limits.clone())?;
+        let parser = Parser::new(token_env.clone(), compiled_grammar, limits.clone())?;
         let eos_token = token_env.tok_trie().eos_token();
 
         Ok(TokenParser {

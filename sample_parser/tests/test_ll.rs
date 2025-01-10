@@ -681,3 +681,14 @@ obj: %json{
 
     check_lark_grammar(grm, &["JSON", "{\"‧a‧\":‧ ‧✖true‧5‧}", "END"]);
 }
+
+#[test]
+fn test_ll_numeric_token_for_text() {
+    check_lark_grammar(
+        r#"start: foo | bar
+           foo: <[5431]> <[5426-5427]> /.*/
+           bar: <[32006]> /.*/
+        "#,
+        &["", "✖<|assistant|>✖f‧foo‧✖bar‧long‧✖<|system|>‧cat‧≺EOS≻"],
+    );
+}

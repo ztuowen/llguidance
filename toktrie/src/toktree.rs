@@ -797,6 +797,22 @@ impl TokTrie {
         ok
     }
 
+    pub fn all_prefixes(&self, bytes: &[u8]) -> Vec<TokenId> {
+        let mut r = Vec::new();
+        let mut n = self.root();
+        for &b in bytes {
+            if let Some(c) = self.child_at_byte(n, b) {
+                n = c;
+                if let Some(tok) = n.token_id() {
+                    r.push(tok);
+                }
+            } else {
+                break;
+            }
+        }
+        r
+    }
+
     pub fn add_bias(&self, r: &mut impl Recognizer, toks: &mut SimpleVob, start: &[u8]) {
         // all prefixes of 'start' are also allowed
         if start.len() > 0 {

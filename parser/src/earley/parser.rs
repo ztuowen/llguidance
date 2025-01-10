@@ -326,6 +326,7 @@ struct LexerState {
 #[derive(Clone)]
 struct ParserState {
     grammar: Arc<CGrammar>,
+    tok_env: TokEnv,
     scratch: Scratch,
     trie_lexer_stack: usize,
     trie_grammar_stack: usize,
@@ -501,13 +502,18 @@ macro_rules! ensure_internal {
 impl ParserState {
     // Create a new state for an empty parser.
     // The parser starts in definitive mode.
-    fn new(grammar: Arc<CGrammar>, mut limits: ParserLimits) -> Result<(Self, Lexer)> {
+    fn new(
+        tok_env: TokEnv,
+        grammar: Arc<CGrammar>,
+        mut limits: ParserLimits,
+    ) -> Result<(Self, Lexer)> {
         let start = grammar.start();
         let lexer = Lexer::from(grammar.lexer_spec(), &mut limits, true)?;
         let scratch = Scratch::new(Arc::clone(&grammar));
         let lexer_state = lexer.a_dead_state(); // placeholder
         let mut r = ParserState {
             grammar,
+            tok_env,
             trie_lexer_stack: usize::MAX,
             rows: vec![],
             rows_valid_end: 0,
@@ -886,7 +892,7 @@ impl ParserState {
                         if r.state
                             .token_range_lexemes()
                             .iter()
-                            .any(|r| r.contains_special_token(token_id))
+                            .any(|r| r.contains_token(token_id))
                         {
                             for b in &tok_bytes[idx..(idx + n_bytes + 1)] {
                                 let ok = r.try_push_byte(*b);
@@ -900,6 +906,31 @@ impl ParserState {
                     break;
                 }
                 if !r.try_push_byte(b) {
+                    if r.state.flush_lexer() {
+                        let range_specs = r.state.token_range_lexemes();
+                        if range_specs.len() > 0 {
+                            let toks = r.state.tok_env.tok_trie().all_prefixes(&tok_bytes[idx..]);
+                            let mut found_numeric = false;
+                            for spec in range_specs {
+                                if let Some(&t) = toks.iter().find(|t| spec.contains_token(**t)) {
+                                    let n_bytes = r.state.tok_env.tok_trie().token(t).len();
+                                    let sidx = spec.idx;
+                                    let ok = r
+                                        .state
+                                        .add_numeric_token(sidx, &tok_bytes[idx..(idx + n_bytes)]);
+                                    if ok.is_ok() {
+                                        idx += n_bytes;
+                                        found_numeric = true;
+                                        break;
+                                    }
+                                    break;
+                                }
+                            }
+                            if found_numeric {
+                                continue;
+                            }
+                        }
+                    }
                     return prefix_len + idx;
                 }
                 idx += 1;
@@ -912,6 +943,44 @@ impl ParserState {
             }
             prefix_len
         })
+    }
+
+    fn add_bytes_ignoring_lexer(&mut self, bytes: &[u8]) {
+        let lexer_state = self.lexer_state();
+        for &b in bytes {
+            self.lexer_stack.push(LexerState {
+                byte: Some(b),
+                ..lexer_state
+            });
+        }
+
+        if self.scratch.definitive {
+            self.bytes.extend_from_slice(bytes);
+            for _ in 0..bytes.len() {
+                self.byte_to_token_idx
+                    .push(self.token_idx.try_into().unwrap());
+            }
+        }
+    }
+
+    fn add_numeric_token(&mut self, idx: LexemeIdx, tok_bytes: &[u8]) -> Result<()> {
+        self.add_bytes_ignoring_lexer(tok_bytes);
+        let pre = PreLexeme {
+            idx,
+            byte: None,
+            byte_next_row: false,
+            hidden_len: 0,
+        };
+        let ok = self.advance_parser(pre);
+        ensure!(
+            ok,
+            "failed to advance parser after adding bytes ignoring lexer"
+        );
+        if self.scratch.definitive {
+            let row_idx = self.num_rows() - 1;
+            self.row_infos[row_idx].apply_token_idx(self.token_idx);
+        }
+        Ok(())
     }
 
     // apply_tokens() "pushes" the bytes in 'tokens' into the lexer and parser.  It is a top-level
@@ -947,6 +1016,17 @@ impl ParserState {
 
                 let (ok, bt) = self.try_push_byte_definitive(Some(b));
                 if !ok {
+                    if bidx == 0 {
+                        let toks = self.tok_env.tok_trie().greedy_tokenize(tok_bytes);
+                        if self.flush_lexer() && toks.len() == 1 {
+                            for spec in self.token_range_lexemes() {
+                                if spec.contains_token(toks[0]) {
+                                    self.add_numeric_token(spec.idx, tok_bytes)?;
+                                    return Ok(0);
+                                }
+                            }
+                        }
+                    }
                     bail!(
                         "byte {:?} fails parse; applying {:?}",
                         b as char,
@@ -2262,8 +2342,8 @@ impl ParserError {
 }
 
 impl Parser {
-    pub fn new(grammar: Arc<CGrammar>, limits: ParserLimits) -> Result<Self> {
-        let (state, lexer) = ParserState::new(grammar, limits)?;
+    pub fn new(tok_env: TokEnv, grammar: Arc<CGrammar>, limits: ParserLimits) -> Result<Self> {
+        let (state, lexer) = ParserState::new(tok_env, grammar, limits)?;
         let shared = Arc::new(Mutex::new(Box::new(SharedState {
             lexer_opt: Some(lexer),
         })));
