@@ -284,14 +284,7 @@ impl TokenParser {
 
     pub fn validate_token(&mut self, token: TokenId) -> Result<bool> {
         self.check_initialized("validate_token")?;
-        if token == self.eos_token {
-            Ok(self.parser.validate_bytes(&[], true) > 0)
-        } else {
-            let bytes = self.tok_trie().decode_raw(&[token]);
-            let n_valid = self.parser.validate_bytes(&bytes, false);
-            assert!(n_valid <= bytes.len());
-            Ok(n_valid == bytes.len())
-        }
+        self.validate_tokens_raw(&[token]).map(|n| n > 0)
     }
 
     /// Returns how many of the passed tokens can be accepted by the parser.
@@ -304,47 +297,8 @@ impl TokenParser {
             return Ok(0);
         }
 
-        if tokens.len() == 1 {
-            return if self.validate_token(tokens[0])? {
-                Ok(1)
-            } else {
-                Ok(0)
-            };
-        }
-
-        let mut final_eos = false;
-        let tokens = if tokens.last() == Some(&self.eos_token) {
-            final_eos = true;
-            &tokens[..tokens.len() - 1]
-        } else {
-            tokens
-        };
-
-        let bytes = self.tok_trie().decode_raw(tokens);
-        let n_valid = self.parser.validate_bytes(&bytes, final_eos);
-
-        if final_eos && n_valid == bytes.len() + 1 {
-            return Ok(tokens.len() + 1);
-        }
-
-        assert!(n_valid <= bytes.len());
-
-        // fast paths
-        if n_valid == bytes.len() {
-            return Ok(tokens.len());
-        }
-        if n_valid == 0 {
-            return Ok(0);
-        }
-
-        let mut byte_ptr = 0;
-        for (token_ptr, tok) in tokens.iter().enumerate() {
-            byte_ptr += self.tok_trie().token_len(*tok);
-            if byte_ptr > n_valid {
-                return Ok(token_ptr);
-            }
-        }
-        Ok(tokens.len())
+        let n_valid = self.parser.validate_tokens(tokens);
+        Ok(n_valid)
     }
 
     fn anyhow_error(&self) -> anyhow::Error {

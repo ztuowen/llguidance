@@ -491,6 +491,14 @@ impl TokTrie {
         bytes
     }
 
+    pub fn decode_as_special(&self, tok: TokenId) -> Vec<u8> {
+        let mut res = Vec::new();
+        res.reserve(9);
+        res.push(TokTrie::SPECIAL_TOKEN_MARKER);
+        res.extend_from_slice(format!("[{}]", tok).as_bytes());
+        res
+    }
+
     pub fn decode_raw(&self, tokens: &[TokenId]) -> Vec<u8> {
         let mut res = Vec::new();
         res.reserve(tokens.len() * 6 + 32); // approximately

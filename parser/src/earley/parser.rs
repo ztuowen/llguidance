@@ -16,7 +16,7 @@ use derivre::{AlphabetInfo, RegexAst, StateID};
 use hashbrown::HashSet;
 use instant::Instant;
 use serde::{Deserialize, Serialize};
-use toktrie::{parse_numeric_token, Recognizer, SimpleVob, TokEnv, TokTrie, INVALID_TOKEN};
+use toktrie::{Recognizer, SimpleVob, TokEnv, TokTrie, TokenId, INVALID_TOKEN};
 
 use crate::{
     api::{ParserLimits, StopReason},
@@ -845,103 +845,67 @@ impl ParserState {
         }
     }
 
-    pub fn validate_bytes(&mut self, tok_bytes: &[u8], check_eos: bool) -> usize {
+    pub fn validate_tokens(&mut self, tokens: &[TokenId]) -> usize {
         self.assert_definitive();
-        let applied_idx = self.byte_to_token_idx.len();
-        let mut prefix_len = 0;
-        let tok_bytes = if applied_idx < self.bytes.len() {
-            let bytes_left = self.bytes.len() - applied_idx;
-            prefix_len = std::cmp::min(tok_bytes.len(), bytes_left);
-            if self.bytes[applied_idx..applied_idx + prefix_len] != tok_bytes[..prefix_len] {
-                // find common prefix
-                let mut i = 0;
-                while i < prefix_len && self.bytes[applied_idx + i] == tok_bytes[i] {
-                    i += 1;
-                }
-                return i;
-            }
-            // there are still pending bytes after applying tok_bytes
-            // do not check for eos
-            if bytes_left > prefix_len {
-                return prefix_len;
-            } else {
-                // otherwise, process the remaining bytes (could be 0)
-                // as speculative
-                &tok_bytes[prefix_len..]
-            }
-        } else {
-            tok_bytes
-        };
-
-        // fast path
-        if tok_bytes.is_empty() && !check_eos {
-            return prefix_len;
-        }
-
-        self.run_speculative("validate_bytes", |state| {
+        self.run_speculative("validate_tokens", |state| {
+            let mut applied_idx = state.byte_to_token_idx.len();
+            let eos = state.tok_env.tok_trie().eos_token();
             let mut r = ParserRecognizer { state };
-            let mut idx = 0;
-            while idx < tok_bytes.len() {
-                let b = tok_bytes[idx];
-                if b == TokTrie::SPECIAL_TOKEN_MARKER {
-                    if !r.state.flush_lexer() {
-                        break;
+            'token: for (tidx, &tok) in tokens.iter().enumerate() {
+                if tok == eos {
+                    if r.state.is_accepting_inner() {
+                        return tidx + 1;
+                    } else {
+                        return tidx;
                     }
-                    if let Some((n_bytes, token_id)) = parse_numeric_token(&tok_bytes[(idx + 1)..])
-                    {
-                        if r.state
-                            .token_range_lexemes()
-                            .iter()
-                            .any(|r| r.contains_token(token_id))
-                        {
-                            for b in &tok_bytes[idx..(idx + n_bytes + 1)] {
-                                let ok = r.try_push_byte(*b);
-                                assert!(ok);
-                            }
-                            idx += n_bytes + 1;
-                            continue;
-                        }
-                    }
-                    // if we failed to account for the whole token, stop
-                    break;
                 }
-                if !r.try_push_byte(b) {
-                    if r.state.flush_lexer() {
-                        let range_specs = r.state.token_range_lexemes();
-                        if range_specs.len() > 0 {
-                            let toks = r.state.tok_env.tok_trie().all_prefixes(&tok_bytes[idx..]);
-                            let mut found_numeric = false;
-                            for spec in range_specs {
-                                if let Some(&t) = toks.iter().find(|t| spec.contains_token(**t)) {
-                                    let n_bytes = r.state.tok_env.tok_trie().token(t).len();
-                                    let sidx = spec.idx;
-                                    let ok = r
-                                        .state
-                                        .add_numeric_token(sidx, &tok_bytes[idx..(idx + n_bytes)]);
-                                    if ok.is_ok() {
-                                        idx += n_bytes;
-                                        found_numeric = true;
-                                        break;
-                                    }
-                                    break;
+
+                let token_bytes = r.state.tok_env.tok_trie().decode_raw(&[tok]);
+
+                'byte: for (bidx, &b) in token_bytes.iter().enumerate() {
+                    if applied_idx < r.state.bytes.len() {
+                        if r.state.bytes[applied_idx] == b {
+                            applied_idx += 1;
+                        } else {
+                            return tidx;
+                        }
+                    } else {
+                        // never push FF
+                        if b != TokTrie::SPECIAL_TOKEN_MARKER && r.try_push_byte(b) {
+                            // normal path
+                            continue 'byte;
+                        }
+
+                        if bidx != 0 {
+                            // not at the start of the token, bail
+                            return tidx;
+                        }
+
+                        if !r.state.flush_lexer() {
+                            // we need to flush lexer before checking for special/numeric tokens
+                            return tidx;
+                        }
+
+                        for spec in r.state.token_range_lexemes() {
+                            if spec.contains_token(tok) {
+                                let numeric_bytes =
+                                    r.state.tok_env.tok_trie().decode_as_special(tok);
+                                let ok = r.state.add_numeric_token(spec.idx, &numeric_bytes);
+                                if ok.is_ok() {
+                                    continue 'token;
+                                } else {
+                                    unreachable!(); // ???
                                 }
                             }
-                            if found_numeric {
-                                continue;
-                            }
                         }
+
+                        // didn't find numeric token
+                        return tidx;
                     }
-                    return prefix_len + idx;
-                }
-                idx += 1;
-            }
-            prefix_len += idx;
-            if check_eos {
-                if state.is_accepting_inner() {
-                    prefix_len += 1;
                 }
             }
-            prefix_len
+
+            tokens.len() // all ok!
         })
     }
 
@@ -2445,15 +2409,15 @@ impl Parser {
         r
     }
 
-    /// Returns how many bytes can be applied.
-    pub fn validate_bytes(&mut self, tok_bytes: &[u8], check_eos: bool) -> usize {
+    /// Returns how many tokens can be applied.
+    pub fn validate_tokens(&mut self, tokens: &[TokenId]) -> usize {
         self.with_shared(|state| {
-            let r = state.validate_bytes(tok_bytes, check_eos);
+            let r = state.validate_tokens(tokens);
             debug!(
-                "validate_bytes: {:?} -> {}/{}",
-                String::from_utf8_lossy(tok_bytes),
+                "validate_tokens: {} -> {}/{}",
+                state.tok_env.tok_trie().tokens_dbg(tokens),
                 r,
-                tok_bytes.len()
+                tokens.len()
             );
             r
         })

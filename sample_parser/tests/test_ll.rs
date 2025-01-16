@@ -691,4 +691,22 @@ fn test_ll_numeric_token_for_text() {
         "#,
         &["", "✖<|assistant|>✖f‧foo‧✖bar‧long‧✖<|system|>‧cat‧≺EOS≻"],
     );
+
+    check_lark_grammar(
+        r#"start: f | foo | bar
+           f: <[29730]> <[105]>
+           foo: <[29730]> <[5431]>
+           bar: <[29842]>
+        "#,
+        &["", "zott‧foo"],
+    );
+
+    // check_lark_grammar(
+    //     r#"start: f | foo | bar
+    //        f: <[29730]> <[105]> <[29659]>
+    //        foo: <[29730]> <[5431]> <[29659]>
+    //        bar: <[29842]>
+    //     "#,
+    //     &["", "zott‧foo", "coded"],
+    // );
 }
