@@ -9,6 +9,8 @@
 
 typedef struct LlgConstraint LlgConstraint;
 
+typedef struct LlgStopController LlgStopController;
+
 typedef struct LlgTokenizer LlgTokenizer;
 
 typedef struct LlgParserLimits {
@@ -358,6 +360,32 @@ void llg_free_constraint(struct LlgConstraint *cc);
  * or until the constraint is freed.
  */
 const char *llg_flush_logs(struct LlgConstraint *cc);
+
+/**
+ * Create a new stop-sequence controller
+ */
+struct LlgStopController *llg_new_stop_controller(const struct LlgTokenizer *tokenizer,
+                                                  const uint32_t *stop_tokens,
+                                                  size_t stop_tokens_len,
+                                                  const char *stop_rx,
+                                                  char *error_string,
+                                                  size_t error_string_len);
+
+/**
+ * Commit a token to the stop-sequence controller.
+ * Returns a valid utf8 string to be returned to the user (which can be empty)
+ * and whether the sequence should be then finished.
+ * The string is valid until the next call to this function, or until the stop-sequence controller is freed.
+ */
+const char *llg_stop_commit_token(struct LlgStopController *stop_ctrl,
+                                  uint32_t token,
+                                  size_t *output_len_p,
+                                  bool *is_stopped_p);
+
+/**
+ * Free the stop-sequence controller
+ */
+void llg_free_stop_controller(struct LlgStopController *stop_ctrl);
 
 #ifdef __cplusplus
 }  // extern "C"

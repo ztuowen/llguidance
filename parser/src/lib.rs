@@ -13,6 +13,7 @@ pub use toktrie;
 pub mod panic_utils;
 
 mod constraint;
+mod stop_controller;
 mod tokenizer_json;
 pub use constraint::{CommitResult, Constraint};
 
@@ -34,6 +35,7 @@ mod json;
 mod json_validation;
 pub use grammar_builder::{GrammarBuilder, NodeRef};
 pub use json::compiler::JsonCompileOptions;
+pub use stop_controller::StopController;
 pub use tokenizer_json::token_bytes_from_tokenizer_json;
 
 #[cfg(feature = "lark")]

@@ -1,5 +1,6 @@
 use std::{
     ffi::{c_char, c_void, CStr},
+    fmt::Display,
     sync::Arc,
 };
 
@@ -9,7 +10,7 @@ use toktrie::{InferenceCapabilities, TokEnv, TokRxInfo, TokTrie, TokenizerEnv};
 use crate::{
     api::{ParserLimits, RegexNode, TopLevelGrammar},
     lark_to_llguidance, CommitResult, Constraint, JsonCompileOptions, Logger, ParserFactory,
-    TokenParser,
+    StopController, TokenParser,
 };
 
 struct CTokenizerInner {
@@ -285,6 +286,11 @@ pub struct LlgConstraint {
     last_logs: String,
     pub(crate) constraint: Option<Constraint>,
     last_commit_result: CommitResult,
+}
+
+pub struct LlgStopController {
+    stop_controller: StopController,
+    last_result: String,
 }
 
 impl Clone for LlgConstraint {
@@ -625,15 +631,7 @@ pub extern "C" fn llg_new_tokenizer(
     match LlgTokenizer::from_init(tok_init) {
         Ok(tok) => Box::into_raw(Box::new(tok)),
         Err(e) => {
-            if error_string_len > 0 {
-                let e = e.to_string();
-                let e = e.as_bytes();
-                let len = std::cmp::min(e.len(), error_string_len - 1);
-                unsafe {
-                    std::ptr::copy_nonoverlapping(e.as_ptr(), error_string as *mut u8, len);
-                    *error_string.add(len) = 0;
-                }
-            }
+            save_error_string(e, error_string, error_string_len);
             std::ptr::null_mut()
         }
     }
@@ -748,4 +746,88 @@ pub extern "C" fn llg_flush_logs(cc: &mut LlgConstraint) -> *const c_char {
         cc.last_logs.push('\0');
     }
     cc.last_logs.as_ptr() as *const c_char
+}
+
+fn build_stop_controller(
+    tokenizer: &LlgTokenizer,
+    stop_tokens: &[u32],
+    stop_rx: *const c_char,
+) -> Result<StopController> {
+    let stop_rx = if stop_rx.is_null() {
+        None
+    } else {
+        Some(
+            unsafe { CStr::from_ptr(stop_rx) }
+                .to_str()
+                .map_err(|_| anyhow::anyhow!("Invalid UTF-8 in stop_rx"))?
+                .to_string(),
+        )
+    };
+    StopController::new(
+        tokenizer.token_env.clone(),
+        stop_tokens.to_vec(),
+        stop_rx,
+        vec![],
+    )
+}
+
+fn save_error_string(e: impl Display, error_string: *mut c_char, error_string_len: usize) {
+    if error_string_len > 0 {
+        let e = e.to_string();
+        let e = e.as_bytes();
+        let len = std::cmp::min(e.len(), error_string_len - 1);
+        unsafe {
+            std::ptr::copy_nonoverlapping(e.as_ptr(), error_string as *mut u8, len);
+            *error_string.add(len) = 0;
+        }
+    }
+}
+
+/// Create a new stop-sequence controller
+#[no_mangle]
+pub extern "C" fn llg_new_stop_controller(
+    tokenizer: &LlgTokenizer,
+    stop_tokens: *const u32,
+    stop_tokens_len: usize,
+    stop_rx: *const c_char,
+    error_string: *mut c_char,
+    error_string_len: usize,
+) -> *mut LlgStopController {
+    let stop_tokens = unsafe { std::slice::from_raw_parts(stop_tokens, stop_tokens_len) };
+    match build_stop_controller(tokenizer, stop_tokens, stop_rx) {
+        Ok(stop_controller) => Box::into_raw(Box::new(LlgStopController {
+            stop_controller,
+            last_result: String::new(),
+        })),
+        Err(e) => {
+            save_error_string(e, error_string, error_string_len);
+            std::ptr::null_mut()
+        }
+    }
+}
+
+/// Commit a token to the stop-sequence controller.
+/// Returns a valid utf8 string to be returned to the user (which can be empty)
+/// and whether the sequence should be then finished.
+/// The string is valid until the next call to this function, or until the stop-sequence controller is freed.
+#[no_mangle]
+pub extern "C" fn llg_stop_commit_token(
+    stop_ctrl: &mut LlgStopController,
+    token: u32,
+    output_len_p: *mut usize,
+    is_stopped_p: *mut bool,
+) -> *const c_char {
+    let r = stop_ctrl.stop_controller.commit_token(token);
+    unsafe { *output_len_p = r.len() };
+    unsafe { *is_stopped_p = stop_ctrl.stop_controller.is_stopped() };
+    stop_ctrl.last_result = format!("{r}\0");
+    stop_ctrl.last_result.as_ptr() as *const c_char
+}
+
+/// Free the stop-sequence controller
+#[no_mangle]
+pub extern "C" fn llg_free_stop_controller(stop_ctrl: *mut LlgStopController) {
+    unsafe {
+        drop(Box::from_raw(stop_ctrl));
+    }
 }
