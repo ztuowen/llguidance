@@ -40,8 +40,8 @@ pub struct CliOptions {
     #[arg(long, short = 'm')]
     llg_masks: bool,
 
-    #[arg(long, short = 's')]
-    llg_slicer: bool,
+    #[arg(long)]
+    llg_disable_slicer: bool,
 
     #[arg(long)]
     llg_no_forcing: bool,
@@ -661,7 +661,7 @@ fn main() {
             .to_env();
 
     let mut slices = llguidance::earley::SlicedBiasComputer::json_slices();
-    if !options.llg_slicer {
+    if options.llg_disable_slicer {
         slices.clear();
     }
 
@@ -674,6 +674,8 @@ fn main() {
 
     let mut factory = ParserFactory::new(&tok_env, caps.clone(), &slices).unwrap();
     factory.quiet();
+
+    // factory.limits_mut().step_lexer_fuel = 10_000_000;
 
     let mut ref_factory = ParserFactory::new(&tok_env, caps.clone(), &vec![]).unwrap();
     ref_factory.quiet();
