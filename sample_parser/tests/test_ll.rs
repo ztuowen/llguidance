@@ -710,3 +710,34 @@ fn test_ll_numeric_token_for_text() {
     //     &["", "zott‧foo", "coded"],
     // );
 }
+
+#[test]
+fn test_ll_dolphin() {
+    let grms = &[
+        r#"start: "Dolphin name: " NAME ","
+           NAME: "\"" /[A-Z]/ /[a-z]+/ "\""
+        "#,
+        // regular gen()
+        r#"start: "Dolphin name: " name ","
+           name[stop=""]: /"[A-Z][a-z]+"/
+        "#,
+        // regular gen(), comma in regex
+        r#"start: "Dolphin name: " name
+           name[stop=""]: /"[A-Z][a-z]+",/
+        "#,
+        // regular gen(), quotes outside
+        r#"start: "Dolphin name: \"" name "\","
+           name[stop=""]: /[A-Z][a-z]+/
+        "#,
+    ];
+
+    // separate comma
+    for g in grms {
+        check_lark_grammar(g, &["D‧olph‧in‧ name‧:‧ \"", "F‧li‧pper‧\"", ","]);
+    }
+
+    // check that we allow `",` as a single token:
+    for g in grms {
+        check_lark_grammar(g, &["D‧olph‧in‧ name‧:‧ \"", "F‧li‧pper‧\","]);
+    }
+}
