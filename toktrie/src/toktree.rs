@@ -1136,3 +1136,27 @@ impl Recognizer for FixedRecognizer {
         }
     }
 }
+
+pub struct ApproximateTokEnv {
+    trie: TokTrie,
+}
+
+impl ApproximateTokEnv {
+    pub fn new(trie: TokTrie) -> Self {
+        Self { trie }
+    }
+}
+
+impl TokenizerEnv for ApproximateTokEnv {
+    fn tok_trie(&self) -> &TokTrie {
+        &self.trie
+    }
+
+    fn tokenize_bytes(&self, s: &[u8]) -> Vec<TokenId> {
+        self.trie.greedy_tokenize(s)
+    }
+
+    fn tokenize_is_canonical(&self) -> bool {
+        false
+    }
+}

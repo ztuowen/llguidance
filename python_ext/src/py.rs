@@ -4,12 +4,15 @@ use std::{borrow::Cow, sync::Arc};
 use llguidance::api::{GrammarWithLexer, ParserLimits};
 use llguidance::earley::SlicedBiasComputer;
 use llguidance::toktrie::{
-    self, InferenceCapabilities, TokEnv, TokRxInfo, TokTrie, TokenId, TokenizerEnv,
+    self, ApproximateTokEnv, InferenceCapabilities, TokEnv, TokRxInfo, TokTrie, TokenId,
+    TokenizerEnv,
 };
 use llguidance::{api::TopLevelGrammar, output::ParserOutput, TokenParser};
 use llguidance::{
-    lark_to_llguidance, Constraint, GrammarBuilder, JsonCompileOptions, Logger, ParserFactory,
+    lark_to_llguidance, token_bytes_from_tokenizer_json, Constraint, GrammarBuilder,
+    JsonCompileOptions, Logger, ParserFactory,
 };
+use pyo3::types::PyByteArray;
 use pyo3::{exceptions::PyValueError, prelude::*};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -94,6 +97,28 @@ impl LLInterpreter {
         self.inner.validate_tokens_raw(&tokens).map_err(val_error)
     }
 
+    fn compute_mask_into(&mut self, trg: &Bound<'_, PyByteArray>) -> PyResult<String> {
+        let r = self.inner.compute_mask().map_err(val_error)?;
+        let is_final = r.is_stop();
+        let trg_slice = unsafe { trg.as_bytes_mut() };
+        if let Some(m) = r.sample_mask.as_ref() {
+            let src = bytemuck::cast_slice::<u32, u8>(m.as_slice());
+            if trg_slice.len() > src.len() {
+                (&mut trg_slice[..src.len()]).copy_from_slice(src);
+            } else {
+                trg_slice.copy_from_slice(&src[..trg_slice.len()]);
+            }
+        } else {
+            trg_slice.fill(0);
+        };
+        let res = PyMidProcessResult {
+            progress: self.inner.flush_progress(),
+            stop: is_final,
+            temperature: self.inner.temperature,
+        };
+        Ok(serde_json::to_string(&res).unwrap())
+    }
+
     fn compute_mask(&mut self, py: Python<'_>) -> PyResult<(Option<Cow<[u8]>>, String)> {
         let r = py
             .allow_threads(|| self.inner.compute_mask())
@@ -156,21 +181,39 @@ impl LLTokenizer {
         n_vocab: Option<usize>,
         slices: Option<Vec<String>>,
     ) -> PyResult<Self> {
-        let tok_env: TokEnv = if let Some(_tokenizer_str) = tokenizer.extract::<String>().ok() {
-            #[cfg(feature = "tokenizers")]
-            {
-                let tok =
-                    toktrie_hf_tokenizers::ByteTokenizerEnv::from_name(&_tokenizer_str, n_vocab)
-                        .map_err(val_error)?;
-                tok.to_env()
-            }
+        let tok_env: TokEnv = if let Some(tokenizer_str) = tokenizer.extract::<String>().ok() {
+            if tokenizer_str.starts_with("{") {
+                let val = serde_json::from_str(&tokenizer_str).map_err(val_error)?;
+                let tokens = token_bytes_from_tokenizer_json(&val).map_err(val_error)?;
+                let trie = TokTrie::from(&TokRxInfo::new(tokens.len() as u32, 0), &tokens);
+                let candidates = &["<|end_of_text|>", "</s>", "<|endoftext|>"];
+                let eos_token = candidates
+                    .iter()
+                    .filter_map(|s| trie.get_special_token(s))
+                    .next()
+                    .ok_or_else(|| {
+                        PyValueError::new_err(format!(
+                            "Expecting a tokenizer with an EOS token, but none was found"
+                        ))
+                    })?;
+                let trie = trie.with_eos_token(eos_token);
+                Arc::new(ApproximateTokEnv::new(trie))
+            } else {
+                #[cfg(feature = "tokenizers")]
+                {
+                    let tok =
+                        toktrie_hf_tokenizers::ByteTokenizerEnv::from_name(&tokenizer_str, n_vocab)
+                            .map_err(val_error)?;
+                    tok.to_env()
+                }
 
-            #[cfg(not(feature = "tokenizers"))]
-            {
-                let _ = n_vocab;
-                return Err(PyValueError::new_err(
-                    "Expecting a TokenizerWrapper() class, not a string",
-                ));
+                #[cfg(not(feature = "tokenizers"))]
+                {
+                    let _ = n_vocab;
+                    return Err(PyValueError::new_err(
+                        "Expecting a TokenizerWrapper() class, not a string",
+                    ));
+                }
             }
         } else {
             Arc::new(PyTokenizer::py_new(tokenizer)?)

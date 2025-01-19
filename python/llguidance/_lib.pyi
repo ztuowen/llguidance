@@ -134,6 +134,12 @@ class LLInterpreter:
         Returns: optional token mask and a JSON string.
         """
 
+    def compute_mask_into(self, trg: bytearray) -> str:
+        """
+        Perform next parsing step.
+        Returns: a JSON string.
+        """
+
     def commit_token(
         self, sampled_token: Optional[TokenId]
     ) -> Tuple[int, List[TokenId]]:
