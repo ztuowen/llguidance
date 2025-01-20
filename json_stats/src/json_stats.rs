@@ -50,6 +50,9 @@ pub struct CliOptions {
     llg_test_slicer: bool,
 
     #[arg(long)]
+    expected: Option<String>,
+
+    #[arg(long)]
     csv: bool,
 
     #[arg(long)]
@@ -73,6 +76,54 @@ pub struct CliOptions {
 }
 
 const MASK_STEPS: usize = 16;
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default, PartialEq, Eq)]
+struct LlgSemanticResult {
+    id: String,
+    num_tokens: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    json_error: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    parser_error: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    validation_error: Option<String>,
+}
+
+impl LlgSemanticResult {
+    fn from_llg_result(r: &LlgResult) -> Self {
+        Self {
+            id: r.id.clone(),
+            num_tokens: r.num_tokens,
+            json_error: r.json_error.clone(),
+            parser_error: r.parser_error.clone(),
+            validation_error: r.validation_error.clone(),
+        }
+    }
+
+    fn error_badness(&self) -> usize {
+        if self.json_error.is_some() {
+            10
+        } else if self.parser_error.is_some() {
+            5
+        } else if self.validation_error.is_some() {
+            2
+        } else {
+            0
+        }
+    }
+
+    fn info(&self) -> String {
+        if let Some(e) = &self.json_error {
+            format!("JSON: {}", short_limit_string(e))
+        } else if let Some(e) = &self.parser_error {
+            format!("PARSER: {}", short_limit_string(e))
+        } else if let Some(e) = &self.validation_error {
+            format!("VALIDATION: {}", short_limit_string(e))
+        } else {
+            format!("OK ({})", self.num_tokens)
+        }
+    }
+}
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
 struct LlgResult {
@@ -122,7 +173,7 @@ struct LlgResult {
     all_mask_us: Vec<usize>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    compile_error: Option<String>,
+    json_error: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     parser_error: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -131,15 +182,6 @@ struct LlgResult {
 
 fn is_zero(v: &usize) -> bool {
     *v == 0
-}
-
-impl LlgResult {
-    pub fn clear_timings(&mut self) {
-        self.ttfm_us = 0;
-        self.masks_us = 0;
-        self.max_mask_us = 0;
-        self.slicer_leftover_us = 0;
-    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -430,8 +472,8 @@ impl TestEnv {
         let mut schema = match schema {
             Ok(schema) => schema,
             Err(e) => {
-                res.compile_error = Some(format!("{e}"));
-                limit_string(&mut res.compile_error);
+                res.json_error = Some(format!("{e}"));
+                limit_string(&mut res.json_error);
                 // eprintln!("{} Error Compile: {}", file, e);
                 return res;
             }
@@ -710,6 +752,7 @@ fn main() {
     let mut num_files_by_raw_feature: HashMap<String, usize> = HashMap::new();
     let mut all_file_info = vec![];
     let mut llg_results = vec![];
+    let mut llg_sem_results = vec![];
     let mut histogram = MaskHistogram::default();
     let mut histogram_a = MaskHistogram::default();
     let mut llg_totals = json!({});
@@ -738,8 +781,8 @@ fn main() {
         if let Some(llg) = s.llg_result {
             let log_err = !options.llg_masks;
 
-            if llg.compile_error.is_some() {
-                total.llg.num_compile_error += 1;
+            if llg.json_error.is_some() {
+                total.llg.num_json_error += 1;
             }
             if llg.parser_error.is_some() {
                 total.llg.num_parser_error += 1;
@@ -791,6 +834,7 @@ fn main() {
                 total.llg.num_masks_a += llg.slow_mask_count_a[i];
             }
 
+            llg_sem_results.push(LlgSemanticResult::from_llg_result(&llg));
             llg_results.push(llg);
         }
 
@@ -858,10 +902,7 @@ fn main() {
 
     if llg_results.len() > 0 {
         save_json_to_file("tmp/llg_results.json", &llg_results);
-        for r in llg_results.iter_mut() {
-            r.clear_timings();
-        }
-        save_json_to_file("tmp/llg_results_timeless.json", &llg_results);
+        save_json_to_file("tmp/llg_sem_results.json", &llg_sem_results);
     }
 
     save_sorted_json_to_file("tmp/num_files_with_feature.json", &num_files_by_feature);
@@ -869,6 +910,36 @@ fn main() {
         "tmp/num_files_with_raw_feature.json",
         &num_files_by_raw_feature,
     );
+
+    if let Some(e) = options.expected.as_ref() {
+        eprintln!("Expected from {}...", e);
+        let expected_sem_results: Vec<LlgSemanticResult> =
+            serde_json::from_str(&read_file_to_string(&e)).unwrap();
+        let mut expected_map = expected_sem_results
+            .iter()
+            .map(|r| (r.id.clone(), r.clone()))
+            .collect::<HashMap<_, _>>();
+        for r in &llg_sem_results {
+            if let Some(exp) = expected_map.remove(&r.id) {
+                if r != &exp {
+                    let status = if r.error_badness() < exp.error_badness() {
+                        "improvement"
+                    } else if r.error_badness() == exp.error_badness() {
+                        "similar"
+                    } else {
+                        "regression"
+                    };
+
+                    eprintln!("{}: {}: {} -> {}", r.id, status, exp.info(), r.info());
+                }
+            } else {
+                eprintln!("{}: new ({})", r.id, r.info());
+            }
+        }
+        for (id, exp) in expected_map {
+            eprintln!("{}: missing ({})", id, exp.info());
+        }
+    }
 }
 
 fn save_json_to_file<T: Serialize>(filename: &str, data: &T) {
@@ -896,7 +967,7 @@ struct MaskHistogram {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 struct LlgTotalStats {
-    num_compile_error: usize,
+    num_json_error: usize,
     num_parser_error: usize,
     num_validation_error: usize,
     num_invalidation_error: usize,
@@ -976,6 +1047,14 @@ fn is_non_semantic_feature(feature: &str) -> bool {
         || feature == "maxItems"
         || feature == "minProperties"
         || feature == "maxProperties"
+}
+
+fn short_limit_string(sp: &str) -> String {
+    if sp.len() > 100 {
+        format!("{}...", &String::from_utf8_lossy(&sp.as_bytes()[..100]))
+    } else {
+        sp.to_string()
+    }
 }
 
 fn limit_string(sp: &mut Option<String>) {
