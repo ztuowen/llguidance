@@ -656,8 +656,6 @@ impl Compiler {
                 // eprintln!("positive:{} {}", positive, mk_rx_repr(&ast));
             }
 
-            ast = self.json_quote(ast);
-
             if !positive {
                 // Check if the regex is empty
                 let mut builder = derivre::RegexBuilder::new();
@@ -677,6 +675,8 @@ impl Compiler {
                     }
                 }
             }
+
+            ast = self.json_quote(ast);
 
             Ok(ast)
         } else {
