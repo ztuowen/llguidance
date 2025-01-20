@@ -20,7 +20,7 @@ rayon = { version = "1.10.0", optional = true }
 hashbrown = { version = "0.15.2", features = ["serde"] }
 
 [features]
-default = ["jsonschema_validation", "lark", "rayon"]
+default = ["lark", "rayon"]
 logging = []                                                  # this is extensive debug logging
 lark = []                                                     # ~115k (binary)
 jsonschema_validation = ["dep:jsonschema", "dep:lazy_static"] # ~2.5M (binary)
