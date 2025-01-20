@@ -129,15 +129,13 @@ impl LlgSemanticResult {
 struct LlgResult {
     id: String,
 
-    #[serde(skip_serializing_if = "is_zero")]
     ttfm_us: usize,
-    #[serde(skip_serializing_if = "is_zero")]
+    json_compile_us: usize,
+    parser_create_us: usize,
+    first_mask_us: usize,
     max_ttfm_us: usize,
-    #[serde(skip_serializing_if = "is_zero")]
     masks_us: usize,
-    #[serde(skip_serializing_if = "is_zero")]
     max_mask_us: usize,
-    #[serde(skip_serializing_if = "is_zero")]
     slicer_leftover_us: usize,
 
     one: usize,
@@ -178,10 +176,6 @@ struct LlgResult {
     parser_error: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     validation_error: Option<String>,
-}
-
-fn is_zero(v: &usize) -> bool {
-    *v == 0
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -467,7 +461,8 @@ impl TestEnv {
         let mut res = LlgResult::default();
 
         let t0 = std::time::Instant::now();
-        let schema = opts.json_to_llg(test_file.schema.clone());
+        let schema = opts.json_to_llg_no_validate(test_file.schema.clone());
+        res.json_compile_us = t0.elapsed().as_micros() as usize;
 
         let mut schema = match schema {
             Ok(schema) => schema,
@@ -489,12 +484,16 @@ impl TestEnv {
             None
         };
 
+        let t1 = std::time::Instant::now();
         let parser = self.factory.create_parser(schema);
+        res.parser_create_us = t1.elapsed().as_micros() as usize;
 
+        let t2 = std::time::Instant::now();
         let parser = match parser {
             Ok(parser) => {
                 let mut constraint = Constraint::new(parser.clone());
                 constraint.compute_mask().unwrap();
+                res.first_mask_us = t2.elapsed().as_micros() as usize;
                 res.ttfm_us = t0.elapsed().as_micros() as usize;
                 res.max_ttfm_us = res.ttfm_us;
                 res.one = 1;
@@ -822,6 +821,9 @@ fn main() {
             }
 
             total.llg.ttfm_us += llg.ttfm_us;
+            total.llg.json_compile_us += llg.json_compile_us;
+            total.llg.parser_create_us += llg.parser_create_us;
+            total.llg.first_mask_us += llg.first_mask_us;
             total.llg.mask_us_total += llg.masks_us;
             total.llg.max_mask_us = std::cmp::max(total.llg.max_mask_us, llg.max_mask_us);
 
@@ -849,10 +851,16 @@ fn main() {
 
     if total.llg.num_parsers > 0 {
         total.llg.ttfm_us /= total.llg.num_parsers;
-        total.llg.mask_us = total.llg.mask_us_total / total.llg.num_tokens;
+        total.llg.parser_create_us /= total.llg.num_parsers;
+        total.llg.first_mask_us /= total.llg.num_parsers;
+        total.llg.json_compile_us /= total.llg.num_parsers;
         total.llg.num_threads = num_threads;
-        total.llg.mask_us_total_a_frac = total.llg.mask_us_total_a * 1000 / total.llg.mask_us_total;
+    }
+
+    if total.llg.num_tokens > 0 {
+        total.llg.mask_us = total.llg.mask_us_total / total.llg.num_tokens;
         total.llg.num_masks_a_frac = total.llg.num_masks_a * 1000 / total.llg.num_tokens;
+        total.llg.mask_us_total_a_frac = total.llg.mask_us_total_a * 1000 / total.llg.mask_us_total;
     }
 
     let mut histogram_csv = format!(
@@ -977,6 +985,9 @@ struct LlgTotalStats {
     num_parsers: usize,
     num_threads: usize,
     ttfm_us: usize,
+    json_compile_us: usize,
+    parser_create_us: usize,
+    first_mask_us: usize,
     max_mask_us: usize,
     mask_us: usize,
     mask_us_total: usize,
