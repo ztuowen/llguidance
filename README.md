@@ -43,7 +43,7 @@ The library implements a context-free grammar parser using Earley’s algorithm 
 ### Performance
 
 <p align="center">
-    <img src="/guidance-ai/jsonschemabench/raw/main/maskbench/plots/hero.png" width="700">
+    <img src="https://github.com/guidance-ai/jsonschemabench/raw/main/maskbench/plots/hero.png" width="700">
 </p>
 
 The plot above shows avarage mask computation time accross different grammar engines.
