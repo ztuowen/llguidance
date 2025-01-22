@@ -1,5 +1,13 @@
 # Low-level Guidance (llguidance)
 
+<p align="center">
+    <img src="https://github.com/guidance-ai/jsonschemabench/raw/main/maskbench/plots/hero.png" width="700">
+    <br/>
+    <em>Performance results from <a href ="https://github.com/guidance-ai/jsonschemabench/tree/main/maskbench">MaskBench</a>.</em>
+</p>
+
+
+
 This library implements constrained decoding (also called constrained sampling or
 structured outputs) for Large Langauge Models (LLMs).
 It can enforce arbitrary context-free grammar on the output of LLM
@@ -40,35 +48,27 @@ Given a context-free grammar, a tokenizer, and a prefix of tokens, llguidance co
 
 The library implements a context-free grammar parser using Earley’s algorithm on top of a lexer based on [derivatives of regular expressions](https://github.com/microsoft/derivre). Mask computation is achieved by traversing the prefix tree (trie) of all possible tokens, leveraging [highly optimized](./docs/optimizations.md) code.
 
-### Performance
+### Comparison and performance
 
-<p align="center">
-    <img src="https://github.com/guidance-ai/jsonschemabench/raw/main/maskbench/plots/hero.png" width="700">
-</p>
-
-The plot above shows avarage mask computation time accross different grammar engines.
 See [MaskBench](https://github.com/guidance-ai/jsonschemabench/tree/main/maskbench) in
-[JSON Schema Bench](https://github.com/guidance-ai/jsonschemabench) for more details.
-
-### Comparison
+[JSON Schema Bench](https://github.com/guidance-ai/jsonschemabench) for detailed performance comparisons.
 
 [LM-format-enforcer](https://github.com/noamgat/lm-format-enforcer) and [llama.cpp grammars](https://github.com/ggerganov/llama.cpp/blob/master/grammars/README.md) are similar to llguidance in that they dynamically build token masks for every step of the decoding process. Both are significantly slower - the former due to clean Python code and the latter due to the lack of a lexer and use of a backtracking parser, which, while elegant, is inefficient.
 
-[Outlines](https://github.com/dottxt-ai/outlines) builds an automaton from constraints and then pre-computes token masks for all automaton states, making sampling fast but inherently limiting constraint complexity and introducing significant startup cost and memory overhead. Llguidance computes token masks on the fly and has essentially no startup cost. The lexer’s automata in llguidance are built lazily and are typically much smaller, as the context-free grammar imposes the top-level structure.
+[Outlines](https://github.com/dottxt-ai/outlines) builds an automaton from constraints and then pre-computes token masks for all automaton states, potentially making sampling fast but inherently limiting constraint complexity and introducing significant startup cost and memory overhead. Llguidance computes token masks on the fly and has essentially no startup cost. The lexer’s automata in llguidance are built lazily and are typically much smaller, as the context-free grammar imposes the top-level structure.
 
-Recently released [XGrammar](https://github.com/mlc-ai/xgrammar) follows an approach similar to llama.cpp (explicit stack-based, character-level parser) with additional pre-computation of certain token masks, similar to Outlines. The pre-computation often runs into seconds, and sometimes minutes. If the pre-computation works well for a given input, the masks are computed quickly (under 50us in half of masks we tested), however if it doesn't fit the particular input, 
-the mask computation times can run into seconds.
-Avarage mask computation time, for masks under 10ms was 277us, however over 3% of masks took longer than 10ms (with avarage time of over 1s).
+[XGrammar](https://github.com/mlc-ai/xgrammar) follows an approach similar to llama.cpp (explicit stack-based, character-level parser) with additional pre-computation of certain token masks, similar to Outlines. The pre-computation often runs into seconds, and sometimes minutes. If the pre-computation works well for a given input, the masks are computed quickly (under 8us in half of masks we tested), however if it doesn't fit the particular input, 
+the mask computation times can run to 10s or 100s os milliseconds.
 
 In llguidance, the full mask computation for a typical JSON schema takes about 1.5ms (for 128k tokenizer).
 However, very often the ["slicer" optimization](./docs/optimizations.md) applies,
 and thus the avarage mask computation in a large JSON benchmark suite
-(2M tokens, 10k schemas) is well under 100us,
-with 1% of masks taking longer than 1ms,
+(2M tokens, 10k schemas) is under 50us,
+with less than 1% of masks taking longer than 1ms,
 and 0.001% taking longer than 10ms (but still shorter than 30ms).
 The optimization doesn't involve any significant pre-computation.
 
-Thus, with 16 cores and a 10ms forward pass, llguidance can handle batch sizes up to 1600 without slowing down the model. (Note that a 10ms forward pass for small batch sizes typically increases to 20ms+ for batch sizes of 100-200.)
+Thus, with 16 cores and a 10ms forward pass, llguidance can handle batch sizes up to 3200 without slowing down the model. (Note that a 10ms forward pass for small batch sizes typically increases to 20ms+ for batch sizes of 100-200.)
 
 ## Building
 
