@@ -1,6 +1,4 @@
-# Implementation notes
-
-## Token trie
+# Token trie implementation notes
 
 The round nodes represent tokens, the square nodes do not have a corresponding token.
 
@@ -93,7 +91,7 @@ while p < nodes.len() {
 Note that the only branch that gets mis-predicted here is the `if byte_allowed(n.byte)`.
 The `if` in argument to `pop_bytes` is compiled to bit operations, so it is branchless.
 
-### Actual code
+## Actual code
 
 See `add_bias_inner` in [toktree.rs](../toktrie/src/toktree.rs).
 

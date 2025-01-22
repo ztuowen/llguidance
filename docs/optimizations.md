@@ -1,11 +1,11 @@
 # What makes llg go fast?
 
-The main operation when computing a token mask is walking the tokenizer trie.
+The main operation when computing a token mask is walking the [tokenizer trie](./toktrie.md).
 The trie is laid flat in memory, and just walking it is highly optimized,
 with minimal branch mis-predictions.
 When doing simple execution of regular expression automaton on the trie,
 on AMD EPYC visiting one trie node takes about 13 cycles.
-This is likely [close to optimal](https://github.com/guidance-ai/llguidance/blob/main/docs/toktrie.md).
+This is likely [close to optimal](./toktrie.md#actual-code).
 
 For a tokenizer with `n_vocab` tokens, the trie typically has around `2 * n_vocab` nodes.
 Thus, for 128k llama3 tokenizer, for EPYC running at 2 GHz,
