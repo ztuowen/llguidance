@@ -40,6 +40,16 @@ Given a context-free grammar, a tokenizer, and a prefix of tokens, llguidance co
 
 The library implements a context-free grammar parser using Earley’s algorithm on top of a lexer based on [derivatives of regular expressions](https://github.com/microsoft/derivre). Mask computation is achieved by traversing the prefix tree (trie) of all possible tokens, leveraging [highly optimized](./docs/optimizations.md) code.
 
+### Performance
+
+<p align="center">
+    <img src="/guidance-ai/jsonschemabench/raw/main/maskbench/plots/hero.png" width="700">
+</p>
+
+The plot above shows avarage mask computation time accross different grammar engines.
+See [MaskBench](https://github.com/guidance-ai/jsonschemabench/tree/main/maskbench) in
+[JSON Schema Bench](https://github.com/guidance-ai/jsonschemabench) for more details.
+
 ### Comparison
 
 [LM-format-enforcer](https://github.com/noamgat/lm-format-enforcer) and [llama.cpp grammars](https://github.com/ggerganov/llama.cpp/blob/master/grammars/README.md) are similar to llguidance in that they dynamically build token masks for every step of the decoding process. Both are significantly slower - the former due to clean Python code and the latter due to the lack of a lexer and use of a backtracking parser, which, while elegant, is inefficient.
