@@ -1,4 +1,4 @@
-use anyhow::{anyhow, bail, Result};
+use anyhow::{anyhow, bail, ensure, Result};
 use hashbrown::HashMap;
 use std::{collections::BTreeMap, sync::Arc};
 use tokenizers::{normalizers::Sequence, FromPretrainedParameters, NormalizerWrapper, Tokenizer};
@@ -9,6 +9,7 @@ pub struct ByteTokenizer {
     pub hf_tokenizer: Tokenizer,
     info: TokRxInfo,
     token_bytes: Vec<Vec<u8>>,
+    sentinel_token: TokenId,
     pub special: BTreeMap<String, u32>,
 }
 
@@ -130,6 +131,7 @@ impl ByteTokenizer {
             special: BTreeMap::new(),
             token_bytes: (0..vocab_size).map(|_| Vec::new()).collect(),
             hf_tokenizer: hft,
+            sentinel_token: 0,
         };
 
         for (id, info) in added.iter() {
@@ -193,7 +195,26 @@ impl ByteTokenizer {
             }
         }
 
+        let sentinel = res.raw_tokenize("\u{2}");
+        ensure!(sentinel.len() == 1, "sentinel token error");
+        res.sentinel_token = sentinel[0];
+
         Ok(res)
+    }
+
+    fn raw_tokenize(&self, s: &str) -> Vec<TokenId> {
+        self.hf_tokenizer
+            .encode(s, false)
+            .expect("tokenizer error")
+            .get_ids()
+            .to_vec()
+    }
+
+    pub fn tokenize_str(&self, s: &str) -> Vec<TokenId> {
+        let mut r = self.raw_tokenize(format!("\u{2}{}", s).as_str());
+        assert!(r[0] == self.sentinel_token);
+        r.remove(0);
+        r
     }
 
     pub fn tokrx_info(&self) -> TokRxInfo {
@@ -258,13 +279,7 @@ impl TokenizerEnv for ByteTokenizerEnv {
     }
 
     fn tokenize_bytes(&self, s: &[u8]) -> Vec<TokenId> {
-        self.tok_trie.tokenize_with_greedy_fallback(s, |s| {
-            self.tokenizer
-                .hf_tokenizer
-                .encode(s, false)
-                .expect("tokenizer error")
-                .get_ids()
-                .to_vec()
-        })
+        self.tok_trie
+            .tokenize_with_greedy_fallback(s, |s| self.tokenizer.tokenize_str(s))
     }
 }
