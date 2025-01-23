@@ -25,13 +25,13 @@ class LLTokenizer:
     def greedy_tokenize(self, text: str) -> List[int]:
         """
         Tokenize the text using a greedy algorithm.
-        This will not necesserily match BPE.
+        This will not necessarily match BPE.
         """
 
     def tokenize_bytes(self, utf8bytes: bytes) -> List[int]:
         """
         Tokenize the text as bytes.
-        This will use the underlaying Python tokenizer to tokenize valid UTF8
+        This will use the underlying Python tokenizer to tokenize valid UTF8
         prefix of the text, and then fallback to greedy_tokenize() for the last
         few bytes.
         """

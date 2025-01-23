@@ -31,42 +31,59 @@ impl jsonschema::Retrieve for DummyResolver {
 #[derive(Parser, Debug, Default)]
 #[command(version, about, long_about = None)]
 pub struct CliOptions {
-    #[arg(long, short = 'c')]
+    /// Measure grammar compilation times (only)
+    #[arg(long)]
     llg_compile: bool,
 
-    #[arg(long, short = 't')]
+    /// Validate each token (only)
+    #[arg(long)]
     llg_test: bool,
 
+    /// Measure mask computation times (full test)
     #[arg(long, short = 'm')]
     llg_masks: bool,
 
+    /// Disable the slicer optimization
     #[arg(long)]
     llg_disable_slicer: bool,
 
+    /// Disable ff_tokens
     #[arg(long)]
     llg_no_forcing: bool,
 
+    /// Test the slicer optimization against un-sliced parser
     #[arg(long)]
     llg_test_slicer: bool,
 
+    /// Validate results against known good results; similar to 'diff FILE tmp/llg_sem_results.json'
     #[arg(long)]
     expected: Option<String>,
 
+    /// Don't report missing or similar results for --expected
+    #[arg(long, default_value_t = false)]
+    ballpark: bool,
+
+    /// Print out CSV mask computation histogram
     #[arg(long)]
     csv: bool,
 
+    /// Run that many threads; defaults to min(40, cpus())
     #[arg(long)]
     num_threads: Option<usize>,
 
+    /// Delete tests that are deemed invalid by jsonschema library
     #[arg(long)]
     remove_broken_tests: bool,
 
+    /// Skip tests with "Handwritten" or "Synthesized" in name
     #[arg(long)]
     skip_synth: bool,
 
+    /// Generate additional JSON schema features in 'meta' fields
     #[arg(long)]
     additional_features: bool,
 
+    /// Specify HF tokenizer to use
     #[arg(long, default_value = "meta-llama/Llama-3.1-8B-Instruct")]
     tokenizer: String,
 
@@ -310,6 +327,7 @@ impl TestEnv {
             // eprintln!("WILL TEST {}: {}", tidx, trie.token_dbg(token));
 
             stats.num_tokens += 1;
+            let mut dbg = String::new();
 
             let ok = if masks {
                 let t0 = std::time::Instant::now();
@@ -384,7 +402,11 @@ impl TestEnv {
                 }
 
                 stats.max_mask_us = std::cmp::max(stats.max_mask_us, us);
-                m.is_allowed(token)
+                let ok = m.is_allowed(token);
+                if !ok && t.valid {
+                    dbg = format!("\n    {}", trie.token_set_dbg(&m));
+                }
+                ok
             } else {
                 parser.validate_token(token)?
             };
@@ -392,10 +414,11 @@ impl TestEnv {
             if !ok {
                 if t.valid {
                     bail!(
-                        "token not accepted at {}",
-                        trie.tokens_dbg(&tokens[0..tidx + 1])
-                            .replace("\\\"", "“")
-                            .replace("\"", "")
+                        "token not accepted at {} * {} * {} {}",
+                        trie.tokens_dbg(&tokens[tidx.saturating_sub(50)..tidx]),
+                        trie.tokens_dbg(&tokens[tidx..tidx + 1]),
+                        trie.tokens_dbg(&tokens[tidx + 1..std::cmp::min(tidx + 5, tokens.len())]),
+                        dbg
                     )
                 } else {
                     return Ok(());
@@ -920,6 +943,14 @@ fn main() {
     );
 
     if let Some(e) = options.expected.as_ref() {
+        let id_to_filename = |id: &str| -> String {
+            all_stats
+                .values()
+                .find(|e| e.file_info.id == id)
+                .map(|f| f.file_name.clone())
+                .unwrap_or_else(|| id.to_string())
+        };
+
         eprintln!("Expected from {}...", e);
         let expected_sem_results: Vec<LlgSemanticResult> =
             serde_json::from_str(&read_file_to_string(&e)).unwrap();
@@ -933,19 +964,30 @@ fn main() {
                     let status = if r.error_badness() < exp.error_badness() {
                         "improvement"
                     } else if r.error_badness() == exp.error_badness() {
+                        if options.ballpark {
+                            continue;
+                        }
                         "similar"
                     } else {
                         "regression"
                     };
 
-                    eprintln!("{}: {}: {} -> {}", r.id, status, exp.info(), r.info());
+                    eprintln!(
+                        "{}: {}: {} -> {}",
+                        id_to_filename(&r.id),
+                        status,
+                        exp.info(),
+                        r.info()
+                    );
                 }
             } else {
-                eprintln!("{}: new ({})", r.id, r.info());
+                eprintln!("{}: new ({})", id_to_filename(&r.id), r.info());
             }
         }
-        for (id, exp) in expected_map {
-            eprintln!("{}: missing ({})", id, exp.info());
+        if !options.ballpark {
+            for (id, exp) in expected_map {
+                eprintln!("{}: missing ({})", id_to_filename(&id), exp.info());
+            }
         }
     }
 }
@@ -1061,7 +1103,7 @@ fn is_non_semantic_feature(feature: &str) -> bool {
 }
 
 fn short_limit_string(sp: &str) -> String {
-    if sp.len() > 100 {
+    if sp.len() > 300 {
         format!("{}...", &String::from_utf8_lossy(&sp.as_bytes()[..100]))
     } else {
         sp.to_string()
