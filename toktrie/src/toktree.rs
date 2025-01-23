@@ -96,6 +96,9 @@ pub fn parse_numeric_token(s: &[u8]) -> Option<(usize, TokenId)> {
         .iter()
         .position(|&x| x == ']' as u8);
     if let Some(spec_len) = spec_len {
+        if s[0] != b'[' {
+            return None;
+        }
         let inner_bytes = &s[1..spec_len];
         if let Ok(inner_str) = std::str::from_utf8(inner_bytes) {
             if let Ok(id) = u32::from_str_radix(inner_str, 10) {
@@ -116,11 +119,14 @@ pub trait TokenizerEnv: Send {
 
     /// Tokenize a given byte sequence.
     /// It will interpret text starting with SPECIAL_TOKEN_MARKER as special tokens.
-    fn tokenize_bytes_marker(&self, s: &[u8]) -> Vec<TokenId> {
+    /// Returns tokens, and number of tokens are should never be re-tokenized
+    /// (because they were specified using the special token marker).
+    fn tokenize_bytes_marker(&self, s: &[u8]) -> (Vec<TokenId>, usize) {
         let mut idx = 0;
         let ff = TokTrie::SPECIAL_TOKEN_MARKER;
         let mut result = Vec::new();
         let trie = self.tok_trie();
+        let mut num_fixed_tokens = 0;
         while idx < s.len() {
             let normal_len = s[idx..]
                 .iter()
@@ -141,6 +147,7 @@ pub trait TokenizerEnv: Send {
                     let spec_token = &s[idx - 1..idx + spec_len];
                     if let Some(id) = trie.token_id_at_bytes(spec_token) {
                         result.push(id);
+                        num_fixed_tokens = result.len();
                         idx += spec_len;
                     }
                 }
@@ -149,13 +156,14 @@ pub trait TokenizerEnv: Send {
                 if let Some((n_bytes, tok_id)) = parse_numeric_token(&s[idx..]) {
                     if tok_id < trie.vocab_size() as u32 {
                         result.push(tok_id);
+                        num_fixed_tokens = result.len();
                         idx += n_bytes;
                     }
                 }
             }
         }
 
-        result
+        (result, num_fixed_tokens)
     }
 
     /// Tokenize a string coming from user. It may or may not interpret <|special_tokens|> as special.
@@ -796,10 +804,6 @@ impl TokTrie {
                 p += n.subtree_size();
                 next_pop = n.num_parents() - 1;
             }
-        }
-        if start.len() == 0 {
-            // if start was non-empty, trie_finished() is supposed to clean this up
-            r.pop_bytes(next_pop);
         }
         r.trie_finished();
         ok

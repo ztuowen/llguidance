@@ -16,7 +16,9 @@ use derivre::{AlphabetInfo, RegexAst, StateID};
 use hashbrown::HashSet;
 use instant::Instant;
 use serde::{Deserialize, Serialize};
-use toktrie::{Recognizer, SimpleVob, TokEnv, TokTrie, TokenId, INVALID_TOKEN};
+use toktrie::{
+    parse_numeric_token, Recognizer, SimpleVob, TokEnv, TokTrie, TokenId, INVALID_TOKEN,
+};
 
 use crate::{
     api::{ParserLimits, StopReason},
@@ -862,6 +864,14 @@ impl ParserState {
 
                 let token_bytes = r.state.tok_env.tok_trie().decode_raw(&[tok]);
 
+                let token_bytes = if applied_idx < r.state.bytes.len()
+                    && r.state.bytes[applied_idx] == TokTrie::SPECIAL_TOKEN_MARKER
+                {
+                    r.state.tok_env.tok_trie().decode_as_special(tok)
+                } else {
+                    token_bytes
+                };
+
                 'byte: for (bidx, &b) in token_bytes.iter().enumerate() {
                     if applied_idx < r.state.bytes.len() {
                         if r.state.bytes[applied_idx] == b {
@@ -1008,6 +1018,21 @@ impl ParserState {
                     check_lexer_max_tokens = true;
                 }
             } else {
+                if bidx == 0 && self.bytes[applied_idx] == TokTrie::SPECIAL_TOKEN_MARKER {
+                    if let Some(tid) = self.tok_env.tok_trie().token_id_at_bytes(tok_bytes) {
+                        if let Some((len, tid2)) =
+                            parse_numeric_token(&self.bytes[applied_idx + 1..])
+                        {
+                            if tid == tid2 {
+                                let tokidx = self.token_idx.try_into().unwrap();
+                                for _ in 0..len + 1 {
+                                    self.byte_to_token_idx.push(tokidx);
+                                }
+                                break;
+                            }
+                        }
+                    }
+                }
                 if self.bytes[applied_idx] != b {
                     bail!(
                         "expecting {:?} (forced bytes), got {:?}; applying {:?}",

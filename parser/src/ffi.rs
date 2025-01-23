@@ -682,7 +682,8 @@ pub extern "C" fn llg_tokenize_bytes_marker(
 ) -> usize {
     let tokens = tok
         .token_env
-        .tokenize_bytes_marker(unsafe { std::slice::from_raw_parts(bytes, bytes_len) });
+        .tokenize_bytes_marker(unsafe { std::slice::from_raw_parts(bytes, bytes_len) })
+        .0;
     let n_toks = tokens.len();
     let to_copy = std::cmp::min(n_toks, output_tokens_len);
     unsafe {

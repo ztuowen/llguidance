@@ -187,6 +187,28 @@ impl TokenParser {
         self.is_fresh = false;
     }
 
+    fn tokenize_and_chop(&mut self, bytes: &[u8]) -> (Vec<TokenId>, usize) {
+        if bytes.len() == 0 {
+            return (Vec::new(), 0);
+        }
+
+        let (mut tokens, num_fixed) = self.token_env.tokenize_bytes_marker(&bytes);
+        let trie = self.token_env.tok_trie();
+        let (chop_tokens, chop_bytes) = self
+            .parser
+            .with_recognizer(|r| trie.chop_tokens(r, &tokens[num_fixed..]));
+        infoln!(
+            self,
+            "tokenize -> {}; chop: {} tokens, {} bytes",
+            trie.tokens_dbg(&tokens),
+            chop_tokens,
+            chop_bytes
+        );
+        // here we remove a suffix from tokens that could be possibly tokenized differently
+        tokens.truncate(tokens.len() - chop_tokens);
+        (tokens, chop_bytes)
+    }
+
     pub fn process_prompt(&mut self, prompt: Vec<TokenId>) -> Vec<TokenId> {
         infoln!(self, "initial lexer cost: {}", self.parser.lexer_stats());
 
@@ -202,17 +224,16 @@ impl TokenParser {
         self.parser.force_bytes();
         let grm_bytes = self.parser.get_bytes().to_vec();
         prompt_bytes.extend_from_slice(&grm_bytes);
-        let tokens = self.token_env.tokenize_bytes_marker(&prompt_bytes);
-        infoln!(self, "prompt+grm: {}", trie.tokens_dbg(&tokens));
-        let (chop_tokens, chop_bytes) = self
-            .parser
-            .with_recognizer(|r| trie.chop_tokens(r, &tokens));
-        let res_prompt = tokens[..tokens.len() - chop_tokens].to_vec();
+
+        let (res_prompt, chop_bytes) = self.tokenize_and_chop(&prompt_bytes);
+
+        let trie = self.token_env.tok_trie();
+        infoln!(self, "prompt+grm: {}", trie.tokens_dbg(&res_prompt));
 
         // if we moved a bunch of grammar to the prompt, update llm_tokens to reflect that
         if chop_bytes <= grm_bytes.len() {
             self.llm_bytes = grm_bytes[0..grm_bytes.len() - chop_bytes].to_vec();
-            self.llm_tokens = self.token_env.tokenize_bytes_marker(&self.llm_bytes);
+            self.llm_tokens = self.token_env.tokenize_bytes_marker(&self.llm_bytes).0;
             self.parser.apply_forced(self.llm_bytes.len());
             let decoded = self.tok_trie().decode_raw(&self.llm_tokens);
             if self.llm_bytes.len() > 0
@@ -495,13 +516,12 @@ impl TokenParser {
     /// Also returns any bytes that need to be prefix of the
     /// next sampled token (token healing).
     fn ff_bytes_to_tokens(&mut self, forced_bytes: Vec<u8>) -> (Vec<TokenId>, Vec<u8>) {
-        let trie = self.token_env.tok_trie();
-
         let mut token_prefix = Vec::new();
 
         let do_force = forced_bytes.len() > 0 && self.token_env.tokenize_is_canonical();
         if do_force {
-            let mut grm_tokens = self.token_env.tokenize_bytes_marker(&forced_bytes);
+            let (grm_tokens, chop_bytes) = self.tokenize_and_chop(&forced_bytes);
+            let trie = self.token_env.tok_trie();
             infoln!(
                 self,
                 "forced: {} bytes:{:?} tokens:{:?}",
@@ -509,13 +529,7 @@ impl TokenParser {
                 forced_bytes,
                 grm_tokens
             );
-            let (chop_tokens, chop_bytes) = self
-                .parser
-                .with_recognizer(|r| trie.chop_tokens(r, &grm_tokens));
-            infoln!(self, "chop: {} tokens, {} bytes", chop_tokens, chop_bytes);
             token_prefix = forced_bytes[forced_bytes.len() - chop_bytes..].to_vec();
-            // here we remove a suffix from grm_tokens that could be possibly tokenized differently
-            grm_tokens.truncate(grm_tokens.len() - chop_tokens);
 
             if grm_tokens.len() > 0 {
                 infoln!(self, "fixed_tokens: {}", trie.tokens_dbg(&grm_tokens),);
