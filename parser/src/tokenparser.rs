@@ -187,12 +187,11 @@ impl TokenParser {
         self.is_fresh = false;
     }
 
-    fn tokenize_and_chop(&mut self, bytes: &[u8]) -> (Vec<TokenId>, usize) {
-        if bytes.len() == 0 {
-            return (Vec::new(), 0);
-        }
-
-        let (mut tokens, num_fixed) = self.token_env.tokenize_bytes_marker(&bytes);
+    fn tokenize_and_chop(
+        &mut self,
+        mut tokens: Vec<TokenId>,
+        num_fixed: usize,
+    ) -> (Vec<TokenId>, usize) {
         let trie = self.token_env.tok_trie();
         let (chop_tokens, chop_bytes) = self
             .parser
@@ -225,7 +224,8 @@ impl TokenParser {
         let grm_bytes = self.parser.get_bytes().to_vec();
         prompt_bytes.extend_from_slice(&grm_bytes);
 
-        let (res_prompt, chop_bytes) = self.tokenize_and_chop(&prompt_bytes);
+        let (tokens, num_fixed) = self.token_env.tokenize_bytes_marker(&prompt_bytes);
+        let (res_prompt, chop_bytes) = self.tokenize_and_chop(tokens, num_fixed);
 
         let trie = self.token_env.tok_trie();
         infoln!(self, "prompt+grm: {}", trie.tokens_dbg(&res_prompt));
@@ -338,11 +338,10 @@ impl TokenParser {
 
         infoln!(self, "compute_mask");
 
-        let mut prefix = self.compute_ff_bytes();
-
+        let prefix=
         // if ff_tokens is enabled, we assume the user has already called compute_ff_tokens()
         if !self.inference_caps.ff_tokens && self.can_force_bytes() {
-            let (ff_tokens, token_prefix) = self.ff_bytes_to_tokens(prefix);
+            let (ff_tokens, token_prefix) = self.ff_tokens();
             if ff_tokens.len() > 0 {
                 let t = ff_tokens[0];
                 infoln!(self, "forcing ff_token by mask: {}", t);
@@ -351,9 +350,13 @@ impl TokenParser {
                 return Ok(mask);
             } else {
                 // no tokens, so we got all our bytes back
-                prefix = token_prefix;
+                token_prefix
             }
-        }
+        } else {
+            let mut trg = Vec::new();
+            self.compute_ff_bytes(&mut trg);
+            trg
+        };
 
         let mut allowed_tokens = self.compute_bias(&prefix);
 
@@ -489,38 +492,70 @@ impl TokenParser {
         !self.parser.grammar().lexer_spec().no_forcing && self.token_env.tokenize_is_canonical()
     }
 
-    fn compute_ff_bytes(&mut self) -> Vec<u8> {
+    fn compute_ff_bytes(&mut self, trg: &mut Vec<u8>) {
         // PERF: in some cases, this may be long
         if self.can_force_bytes() {
             self.parser.force_bytes();
         }
 
-        let mut new_forced = self.parser.currently_forced_bytes().to_vec();
-
         // handle grm_prefix we might have injected
         if self.llm_bytes.len() < self.grm_prefix.len() {
-            let mut inject = self.grm_prefix[self.llm_bytes.len()..].to_vec();
+            let inject = &self.grm_prefix[self.llm_bytes.len()..];
+            trg.extend_from_slice(inject);
             infoln!(
                 self,
                 "injecting prefix: {:?}",
                 String::from_utf8_lossy(&inject)
             );
-            inject.extend_from_slice(&new_forced);
-            new_forced = inject;
         }
 
-        new_forced
+        trg.extend_from_slice(self.parser.currently_forced_bytes());
     }
 
     /// Converts forced bytes into tokens.
     /// Also returns any bytes that need to be prefix of the
     /// next sampled token (token healing).
-    fn ff_bytes_to_tokens(&mut self, forced_bytes: Vec<u8>) -> (Vec<TokenId>, Vec<u8>) {
+    fn ff_tokens(&mut self) -> (Vec<TokenId>, Vec<u8>) {
+        let mut forced_bytes = Vec::new();
+        let mut existing_tokens = if self.llm_tokens.is_empty() {
+            Vec::new()
+        } else {
+            let r = self.llm_tokens[self.llm_tokens.len() - 1..].to_vec();
+            let trie = self.token_env.tok_trie();
+            forced_bytes = trie.decode_raw(&r);
+            r
+        };
+        let num_existing_bytes = forced_bytes.len();
+
+        self.compute_ff_bytes(&mut forced_bytes);
+
         let mut token_prefix = Vec::new();
 
-        let do_force = forced_bytes.len() > 0 && self.token_env.tokenize_is_canonical();
+        let do_force =
+            forced_bytes.len() > num_existing_bytes && self.token_env.tokenize_is_canonical();
         if do_force {
-            let (grm_tokens, chop_bytes) = self.tokenize_and_chop(&forced_bytes);
+            let (mut tokens, mut num_fixed) = self.token_env.tokenize_bytes_marker(&forced_bytes);
+            if !tokens.starts_with(&existing_tokens) {
+                // whoops, re-tokenize without the prefix
+                let trie = self.token_env.tok_trie();
+                infoln!(
+                    self,
+                    "re-tokenizing without prefix: {}; because we got {}",
+                    trie.tokens_dbg(&existing_tokens),
+                    trie.tokens_dbg(&tokens),
+                );
+                (tokens, num_fixed) = self
+                    .token_env
+                    .tokenize_bytes_marker(&forced_bytes[num_existing_bytes..]);
+                existing_tokens.clear();
+            } else {
+                num_fixed = std::cmp::max(existing_tokens.len(), num_fixed);
+            }
+
+            let (mut grm_tokens, chop_bytes) = self.tokenize_and_chop(tokens, num_fixed);
+            assert!(grm_tokens.starts_with(&existing_tokens));
+            grm_tokens.drain(..existing_tokens.len());
+
             let trie = self.token_env.tok_trie();
             infoln!(
                 self,
@@ -532,7 +567,7 @@ impl TokenParser {
             token_prefix = forced_bytes[forced_bytes.len() - chop_bytes..].to_vec();
 
             if grm_tokens.len() > 0 {
-                infoln!(self, "fixed_tokens: {}", trie.tokens_dbg(&grm_tokens),);
+                infoln!(self, "fixed_tokens: {}", trie.tokens_dbg(&grm_tokens));
                 return (grm_tokens, token_prefix);
             } else {
                 infoln!(self, "no fixed tokens");
@@ -661,9 +696,7 @@ impl TokenParser {
     /// parser state.
     pub fn compute_ff_tokens(&mut self) -> Vec<TokenId> {
         // force after scanning tokens from LLM (this may walk the parser some more)
-        let ff_bytes = self.compute_ff_bytes();
-        let (ff_tokens, _token_prefix) = self.ff_bytes_to_tokens(ff_bytes);
-        ff_tokens
+        self.ff_tokens().0
     }
 
     /// Compute and then consume fast-forward tokens.

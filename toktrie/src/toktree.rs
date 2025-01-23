@@ -384,7 +384,7 @@ impl TokTrie {
             ts.num_set(),
             self.vocab_size(),
             if use_neg { "ALL EXCEPT " } else { "" },
-            token_names.join(", ")
+            token_names.join(" ")
         )
     }
 
@@ -393,24 +393,16 @@ impl TokTrie {
     }
 
     pub fn test_trace_tokens(&self, toks: &[u32]) -> String {
-        toks.iter()
-            .map(|t| {
-                let s = self.token_dbg(*t);
-                if s.starts_with("\"") {
-                    self.token_str(*t)
-                } else if s.starts_with("<") {
-                    s
-                } else {
-                    format!("≺{}≻", s)
-                }
-            })
-            .collect::<Vec<_>>()
-            .join("‧")
+        self.tokens_dbg_ext(toks, false)
     }
 
     pub const MAX_DBG_TOKENS: usize = 200;
 
     pub fn tokens_dbg(&self, toks: &[u32]) -> String {
+        self.tokens_dbg_ext(toks, true)
+    }
+
+    fn tokens_dbg_ext(&self, toks: &[u32], quote: bool) -> String {
         let (limited, toks) = if toks.len() > Self::MAX_DBG_TOKENS {
             (true, &toks[0..Self::MAX_DBG_TOKENS])
         } else {
@@ -419,14 +411,7 @@ impl TokTrie {
 
         let mut joined = toks
             .iter()
-            .map(|t| {
-                let s = self.token_dbg(*t);
-                if s.starts_with("\"") {
-                    s[1..s.len() - 1].to_string()
-                } else {
-                    format!("≺{}≻", s)
-                }
-            })
+            .map(|t| self.token_dbg_ext(*t, false))
             .collect::<Vec<_>>()
             .join("‧");
 
@@ -434,14 +419,22 @@ impl TokTrie {
             joined.push_str("…");
         }
 
-        format!("\"{}\"", joined)
+        if quote {
+            format!("⟦{}⟧", joined)
+        } else {
+            joined
+        }
     }
 
     pub fn token_dbg(&self, idx: u32) -> String {
+        self.token_dbg_ext(idx, true)
+    }
+
+    fn token_dbg_ext(&self, idx: u32, quote: bool) -> String {
         if idx == self.info.tok_eos {
-            "EOS".to_string()
+            "≺EOS≻".to_string()
         } else if idx as usize >= self.vocab_size() {
-            format!("OOB[{}]", idx)
+            format!("≺OOB[{}]≻", idx)
         } else {
             // format!("{:?}[{}]", self.token_str(idx), idx)
             let bytes = self.token(idx);
@@ -450,12 +443,19 @@ impl TokTrie {
             } else {
                 let s = String::from_utf8_lossy(bytes);
                 if s.len() == 0 {
-                    format!("EMPTY[{}]", idx)
+                    format!("≺EMPTY[{}]≻", idx)
                 } else if !s.contains('\u{fffd}') {
-                    format!("{:?}", s)
+                    let mut s = format!("{:?}", s).replace("\\\"", "\"");
+                    s.remove(0);
+                    s.pop();
+                    if quote {
+                        format!("⟨{}⟩", s)
+                    } else {
+                        s
+                    }
                 } else {
                     let bytes = self.token(idx);
-                    format!("HEX[{}]", to_hex_string(bytes))
+                    format!("≺HEX[{}]≻", to_hex_string(bytes))
                 }
             }
         }

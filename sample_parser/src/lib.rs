@@ -169,6 +169,7 @@ fn check_grammar(
 fn check_eq(tok_env: &TokEnv, label: &str, tokens: &[TokenId], expected_tokens: &str) {
     let trie = tok_env.tok_trie();
     let actual_tokens = trie.test_trace_tokens(tokens);
+    let expected_tokens = expected_tokens.replace("\n", "\\n");
     println!(
         "Checking {}: exp:{:?} got:{:?}",
         label, expected_tokens, actual_tokens

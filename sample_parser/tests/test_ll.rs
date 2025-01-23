@@ -144,6 +144,25 @@ fn test_ll_json() {
 }
 
 #[test]
+fn test_ll_ff_json() {
+    check_lark_json(
+        r#"start: "JSON" @sub
+        "#,
+        json!({
+            "type": "object",
+            "properties": {
+                "a_long_property_name": {
+                    "type": "number"
+                }
+            },
+            "additionalProperties": false
+        }),
+        &["JSON", "{\"‧a‧\":‧ ‧✖true‧5‧}"],
+    );
+}
+
+
+#[test]
 fn test_ll_enum_json() {
     // check for proper quoting of the enum value
     check_lark_json(
