@@ -157,10 +157,27 @@ fn test_ll_ff_json() {
             },
             "additionalProperties": false
         }),
-        &["JSON", "{\"‧a‧\":‧ ‧✖true‧5‧}"],
+        &["JSON", "{\"", "a‧_‧long‧_‧property‧_‧name", "\":‧ ‧5‧}"],
+    );
+
+    check_lark_json(
+        r#"start: "JSON" @sub
+        "#,
+        json!({
+            "type": "object",
+            "properties": {
+                "a_long_property_name": {
+                    "type": "number"
+                },
+                "b_something_property_name": {
+                    "type": "number"
+                }
+            },
+            "additionalProperties": false
+        }),
+        &["JSON", "{\"‧a", "_‧long‧_‧property‧_‧name", "\":‧ ‧5‧}"],
     );
 }
-
 
 #[test]
 fn test_ll_enum_json() {

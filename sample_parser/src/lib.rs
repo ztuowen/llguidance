@@ -96,6 +96,37 @@ fn check_grammar(
 
             let num_ok = constraint.validate_tokens_raw(&rest_allowed).unwrap();
             if num_ok < rest_allowed.len() {
+                // figure out which, if any isn't allowed by masks
+                for tok in &rest_allowed {
+                    eprintln!("\nChecking token {} {}", tok, tok_env.tok_trie().token_dbg(*tok));
+                    let mask = constraint.parser.compute_mask();
+                    if mask.is_err() {
+                        eprint!("Error computing mask: {:?}", mask);
+                        break;
+                    }
+                    let mask = mask.unwrap();
+                    if !mask.is_allowed(*tok) {
+                        eprintln!(
+                            "Token {} {} not allowed by mask",
+                            tok,
+                            tok_env.tok_trie().token_dbg(*tok)
+                        );
+                    }
+                    let r = constraint.parser.consume_token(*tok);
+                    if r.is_err() {
+                        eprint!("Error consuming token: {:?}", r);
+                        break;
+                    }
+                    let r = r.unwrap();
+                    if r != 0 {
+                        eprintln!(
+                            "Token {} {} generated backtrack {}",
+                            tok,
+                            tok_env.tok_trie().token_dbg(*tok),
+                            r
+                        );
+                    }
+                }
                 panic!(
                     "Expected {} tokens to be allowed; got {}; {}",
                     rest_allowed.len(),
