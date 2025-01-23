@@ -1,13 +1,40 @@
 use lazy_static::lazy_static;
 use llguidance::{
-    api::TopLevelGrammar, earley::SlicedBiasComputer, toktrie::InferenceCapabilities,
+    api::TopLevelGrammar,
+    earley::SlicedBiasComputer,
+    toktrie::{InferenceCapabilities, TokEnv},
     ParserFactory, TokenParser,
 };
-use sample_parser::get_tok_env;
+use serde_json::{json, Value};
+
+lazy_static! {
+    static ref PARSER_FACTORY_PHI: ParserFactory = {
+        let env = sample_parser::get_tok_env();
+        let mut fact = ParserFactory::new(
+            &env,
+            InferenceCapabilities {
+                ff_tokens: false,
+                backtrack: false,
+                conditional_ff_tokens: false,
+                fork: false,
+            },
+            &SlicedBiasComputer::general_slices(),
+        )
+        .unwrap();
+        fact.set_stderr_log_level(2);
+        fact.set_buffer_log_level(0);
+        fact
+    };
+}
 
 lazy_static! {
     static ref PARSER_FACTORY: ParserFactory = {
-        let env = get_tok_env();
+        let env = toktrie_hf_tokenizers::ByteTokenizerEnv::from_name(
+            "meta-llama/Llama-3.1-8B-Instruct",
+            None,
+        )
+        .unwrap()
+        .to_env();
         let mut fact = ParserFactory::new(
             &env,
             InferenceCapabilities {
@@ -39,50 +66,46 @@ fn consume(parser: &mut TokenParser, tok: u32) {
 
 #[test]
 fn test_ff_tokens() {
-    let mut p = make_parser(
-        r#"
-            start: <[1111]> <[311]> ( <[366]> | "s" ) <[311]> <[1111]>
-        "#,
-    );
-    let t = p.compute_ff_tokens();
+    let lark = r#"
+        start: <[1111]> <[311]> ( <[366]> | "s" ) <[311]> <[1111]>
+    "#;
+    let grm = TopLevelGrammar::from_lark(lark.to_string());
+    let mut parser = PARSER_FACTORY_PHI.create_parser(grm).unwrap();
+    parser.start_without_prompt();
+
+    let t = parser.compute_ff_tokens();
     assert_eq!(t, vec![1111, 311]);
-    let n = p.validate_tokens_raw(&t).unwrap();
+    let n = parser.validate_tokens_raw(&t).unwrap();
     assert_eq!(n, 2);
-    consume(&mut p, 1111);
-    consume(&mut p, 311);
+    consume(&mut parser, 1111);
+    consume(&mut parser, 311);
 
-    let n = p.validate_tokens_raw(&vec![366, 311, 1111]).unwrap();
+    let n = parser.validate_tokens_raw(&vec![366, 311, 1111]).unwrap();
     assert_eq!(n, 3);
 
-    let n = p.validate_tokens_raw(&vec![29879, 311, 1111]).unwrap();
+    let n = parser.validate_tokens_raw(&vec![29879, 311, 1111]).unwrap();
     assert_eq!(n, 3);
 
-    consume(&mut p, 29879);
+    consume(&mut parser, 29879);
 
-    let t = p.compute_ff_tokens();
+    let t = parser.compute_ff_tokens();
     assert_eq!(t, vec![311, 1111]);
-    let n = p.validate_tokens_raw(&t).unwrap();
+    let n = parser.validate_tokens_raw(&t).unwrap();
     assert_eq!(n, 2);
 }
 
-#[test]
-fn test_ff_json1() {
-    let mut p = make_parser(
-        r#"
-            start: %json {
-                "type": "object",
-                "properties": {
-                    "someLongPropertyName": {
-                        "type": "string"
-                    }
-                },
-                "additionalProperties": false
-            }
-        "#,
-    );
+fn get_tok_env() -> &'static TokEnv {
+    PARSER_FACTORY.tok_env()
+}
+
+fn json_fwd_test(schema: Value, obj: Value) {
+    let mut p = make_parser(&format!(
+        "start: %json {}",
+        serde_json::to_string(&schema).unwrap()
+    ));
 
     let trie = get_tok_env().tok_trie();
-    let tokens = get_tok_env().tokenize(r#"{"someLongPropertyName": "123"}"#);
+    let tokens = get_tok_env().tokenize(serde_json::to_string(&obj).unwrap().as_str());
     println!("\n\ntokens: {}\n", trie.tokens_dbg(&tokens));
 
     for tok in tokens.iter() {
@@ -93,33 +116,60 @@ fn test_ff_json1() {
 }
 
 #[test]
-fn test_ff_json2() {
-    let mut p = make_parser(
-        r#"
-            start: %json 
-{
-    "additionalProperties": false,
-    "properties": {
-      "path": {
-        "pattern": "^/contributions",
-        "type": "string"
-      }
-    },
-    "required": ["path"],
-    "type": "object"
-}
-        "#,
+fn test_ff_json1() {
+    json_fwd_test(
+        json!({
+            "type": "object",
+            "properties": {
+                "someLongPropertyName": {
+                    "type": "string"
+                }
+            },
+            "additionalProperties": false
+        }),
+        json!({
+            "someLongPropertyName": "123"
+        }),
     );
+}
 
-    let trie = get_tok_env().tok_trie();
-    let tokens = get_tok_env().tokenize(r#"{"path": "/contributions/foo"}"#);
-    println!("\n\ntokens: {}\n", trie.tokens_dbg(&tokens));
-
-    for tok in tokens.iter() {
-        let m = p.compute_mask().unwrap();
-        if !m.is_allowed(*tok) {
-            panic!("tok not allowed: {}", trie.token_dbg(*tok));
+#[test]
+fn test_ff_json2() {
+    json_fwd_test(
+        json!({
+            "additionalProperties": false,
+            "properties": {
+              "path": {
+                "pattern": "^/contributions",
+                "type": "string"
+              }
+            },
+            "required": ["path"],
+            "type": "object"
         }
-        consume(&mut p, *tok);
-    }
+        ),
+        json!({"path": "/contributions/foo"}),
+    );
+}
+
+#[test]
+fn test_ff_json3() {
+    json_fwd_test(
+        json!({
+            "additionalProperties": false,
+            "properties": {
+              "location": { "type": "string" },
+              "retries": { "type": "number" },
+              "retrieveDate": { "type": "string" },
+              "retryInterval": { "type": "number" }
+            },
+            "required": [ "location", "retrieveDate" ],
+            "type": "object"
+        }),
+        json!({
+            "location": "https://example.com/firmware.bin",
+            "retrieveDate": "2022-01-01T12:00:00Z",
+            "retryInterval": 300
+        }),
+    );
 }

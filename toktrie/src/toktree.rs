@@ -755,7 +755,9 @@ impl TokTrie {
     /// Return how many tokens and bytes need to chopped off tokens,
     /// so that we do not limit all possible future tokenizations matching the recognizer.
     pub fn chop_tokens(&self, r: &mut impl Recognizer, tokens: &[TokenId]) -> (usize, usize) {
-        let suff_bytes = self.decode_raw(&tokens[tokens.len().saturating_sub(4)..]);
+        let max_token_lookback = 4;
+        let suff_bytes =
+            self.decode_raw(&tokens[tokens.len().saturating_sub(max_token_lookback)..]);
         let suff_bytes = &suff_bytes[suff_bytes.len().saturating_sub(self.max_token_len())..];
 
         for idx in 0..suff_bytes.len() {
