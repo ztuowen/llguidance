@@ -539,8 +539,10 @@ impl TestEnv {
             for (idx, t) in test_file.tests.iter().enumerate() {
                 let t0 = std::time::Instant::now();
                 if let Err(e) = self.run_llg_test(&mut res, &parser, ref_parser.as_ref(), t) {
-                    res.validation_error = Some(format!("test #{idx}: {e}"));
-                    limit_string(&mut res.validation_error);
+                    if res.validation_error.is_none() {
+                        res.validation_error = Some(format!("test #{idx}: {e}"));
+                        limit_string(&mut res.validation_error);
+                    }
                 } else {
                     if t.valid {
                         res.num_valid_tests += 1;

@@ -1047,6 +1047,12 @@ impl ParserState {
                 .push(self.token_idx.try_into().unwrap());
         }
 
+        item_trace!(
+            "apply_token: ok, {}/{}",
+            self.byte_to_token_idx.len(),
+            self.bytes.len()
+        );
+
         for idx in row_to_apply..self.num_rows() {
             // for all rows fully contained (so far) in the new token, reset token idx
             if self.row_infos[idx].start_byte_idx >= applied_idx0 {

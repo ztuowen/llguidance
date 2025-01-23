@@ -338,9 +338,8 @@ impl TokenParser {
 
         infoln!(self, "compute_mask");
 
-        let prefix=
         // if ff_tokens is enabled, we assume the user has already called compute_ff_tokens()
-        if !self.inference_caps.ff_tokens && self.can_force_bytes() {
+        let prefix = if !self.inference_caps.ff_tokens && self.can_force_bytes() {
             let (ff_tokens, token_prefix) = self.ff_tokens();
             if ff_tokens.len() > 0 {
                 let t = ff_tokens[0];
@@ -391,6 +390,15 @@ impl TokenParser {
 
         // first, check we're still in grm_prefix
         let prefix_len = self.grm_prefix.len().saturating_sub(self.llm_bytes.len());
+
+        infoln!(
+            self,
+            "apply_token: {} {} prefix={}",
+            tok_id,
+            trie.token_dbg(tok_id),
+            prefix_len
+        );
+
         let tok_bytes = if prefix_len > 0 {
             let to_apply = &tok_bytes[0..std::cmp::min(tok_bytes.len(), prefix_len)];
             self.llm_bytes.extend_from_slice(to_apply);
@@ -561,7 +569,7 @@ impl TokenParser {
                 self,
                 "forced: {} bytes:{:?} tokens:{:?}",
                 trie.tokens_dbg(&grm_tokens),
-                forced_bytes,
+                &forced_bytes[num_existing_bytes..],
                 grm_tokens
             );
             token_prefix = forced_bytes[forced_bytes.len() - chop_bytes..].to_vec();
@@ -572,9 +580,9 @@ impl TokenParser {
             } else {
                 infoln!(self, "no fixed tokens");
             }
-        } else if forced_bytes.len() > 0 {
+        } else if forced_bytes.len() > num_existing_bytes {
             infoln!(self, "not-forcing {} bytes", forced_bytes.len());
-            token_prefix = forced_bytes;
+            token_prefix = forced_bytes[num_existing_bytes..].to_vec();
         }
 
         (Vec::new(), token_prefix)

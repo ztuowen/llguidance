@@ -64,3 +64,30 @@ fn test_ff_tokens() {
     let n = p.validate_tokens_raw(&t).unwrap();
     assert_eq!(n, 2);
 }
+
+#[test]
+fn test_ff_json() {
+    let mut p = make_parser(
+        r#"
+            start: %json {
+                "type": "object",
+                "properties": {
+                    "someLongPropertyName": {
+                        "type": "string"
+                    }
+                },
+                "additionalProperties": false
+            }
+        "#,
+    );
+
+    let trie = get_tok_env().tok_trie();
+    let tokens = get_tok_env().tokenize(r#"{"someLongPropertyName": "123"}"#);
+    println!("\n\ntokens: {}\n", trie.tokens_dbg(&tokens));
+
+    for tok in tokens.iter() {
+        let m = p.compute_mask().unwrap();
+        assert!(m.is_allowed(*tok));
+        consume(&mut p, *tok);
+    }
+}
