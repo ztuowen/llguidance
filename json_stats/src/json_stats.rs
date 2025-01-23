@@ -1106,7 +1106,7 @@ fn is_non_semantic_feature(feature: &str) -> bool {
 
 fn short_limit_string(sp: &str) -> String {
     if sp.len() > 300 {
-        format!("{}...", &String::from_utf8_lossy(&sp.as_bytes()[..100]))
+        format!("{}...", &String::from_utf8_lossy(&sp.as_bytes()[..300]))
     } else {
         sp.to_string()
     }

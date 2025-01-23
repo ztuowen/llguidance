@@ -755,20 +755,26 @@ impl TokTrie {
     /// Return how many tokens and bytes need to chopped off tokens,
     /// so that we do not limit all possible future tokenizations matching the recognizer.
     pub fn chop_tokens(&self, r: &mut impl Recognizer, tokens: &[TokenId]) -> (usize, usize) {
-        let mut suff = Vec::new();
-        let mut chop_tokens = 0;
-        let mut chop_bytes = 0;
-        for (idx, &t) in tokens.iter().rev().enumerate() {
-            suff.splice(0..0, self.decode_raw(&[t]));
-            if suff.len() > self.max_token_len() {
-                break;
-            }
-            if self.has_valid_extensions(r, &suff) {
-                chop_tokens = idx + 1;
-                chop_bytes = suff.len();
+        let suff_bytes = self.decode_raw(&tokens[tokens.len().saturating_sub(4)..]);
+        let suff_bytes = &suff_bytes[suff_bytes.len().saturating_sub(self.max_token_len())..];
+
+        for idx in 0..suff_bytes.len() {
+            let suff = &suff_bytes[idx..];
+            if self.has_valid_extensions(r, suff) {
+                let chop_bytes = suff.len();
+                assert!(chop_bytes > 0);
+                let mut curr_len = 0;
+                for chop_idx in 1..=tokens.len() {
+                    curr_len += self.token_len(tokens[tokens.len() - chop_idx]);
+                    if curr_len >= chop_bytes {
+                        return (chop_idx, curr_len);
+                    }
+                }
+                unreachable!();
             }
         }
-        (chop_tokens, chop_bytes)
+
+        (0, 0)
     }
 
     /// Check if add_bias() would have returned any tokens.

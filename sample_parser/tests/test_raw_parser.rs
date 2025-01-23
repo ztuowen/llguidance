@@ -66,7 +66,7 @@ fn test_ff_tokens() {
 }
 
 #[test]
-fn test_ff_json() {
+fn test_ff_json1() {
     let mut p = make_parser(
         r#"
             start: %json {
@@ -88,6 +88,38 @@ fn test_ff_json() {
     for tok in tokens.iter() {
         let m = p.compute_mask().unwrap();
         assert!(m.is_allowed(*tok));
+        consume(&mut p, *tok);
+    }
+}
+
+#[test]
+fn test_ff_json2() {
+    let mut p = make_parser(
+        r#"
+            start: %json 
+{
+    "additionalProperties": false,
+    "properties": {
+      "path": {
+        "pattern": "^/contributions",
+        "type": "string"
+      }
+    },
+    "required": ["path"],
+    "type": "object"
+}
+        "#,
+    );
+
+    let trie = get_tok_env().tok_trie();
+    let tokens = get_tok_env().tokenize(r#"{"path": "/contributions/foo"}"#);
+    println!("\n\ntokens: {}\n", trie.tokens_dbg(&tokens));
+
+    for tok in tokens.iter() {
+        let m = p.compute_mask().unwrap();
+        if !m.is_allowed(*tok) {
+            panic!("tok not allowed: {}", trie.token_dbg(*tok));
+        }
         consume(&mut p, *tok);
     }
 }
