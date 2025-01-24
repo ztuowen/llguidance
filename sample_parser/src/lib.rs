@@ -98,7 +98,11 @@ fn check_grammar(
             if num_ok < rest_allowed.len() {
                 // figure out which, if any isn't allowed by masks
                 for tok in &rest_allowed {
-                    eprintln!("\nChecking token {} {}", tok, tok_env.tok_trie().token_dbg(*tok));
+                    eprintln!(
+                        "\nChecking token {} {}",
+                        tok,
+                        tok_env.tok_trie().token_dbg(*tok)
+                    );
                     let mask = constraint.parser.compute_mask();
                     if mask.is_err() {
                         eprint!("Error computing mask: {:?}", mask);
