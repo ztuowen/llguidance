@@ -3,7 +3,10 @@ use clap::Parser;
 use json_stats::SchemaStats;
 use jsonschema::Validator;
 use llguidance::{
-    earley::{perf::ParserPerfCounters, regexvec::LexerStats},
+    earley::{
+        perf::{num_with_commas, ParserPerfCounters},
+        regexvec::LexerStats,
+    },
     toktrie::{InferenceCapabilities, TokEnv},
     Constraint, JsonCompileOptions, ParserFactory, TokenParser,
 };
@@ -956,6 +959,8 @@ fn main() {
         total.llg.ff_tokens_us /= total.llg.num_ff_token_seqs;
     }
 
+    total.llg.ttfm_ms_total = total.llg.ttfm_us / 1000;
+
     if total.llg.num_parsers > 0 {
         total.llg.ttfm_us /= total.llg.num_parsers;
         total.llg.parser_create_us /= total.llg.num_parsers;
@@ -983,12 +988,14 @@ fn main() {
     total.llg_json = llg_totals.clone();
     eprintln!("{}", serde_json::to_string_pretty(&total).unwrap());
     eprintln!(
-        "{}Total time: {}ms TTFM {}μs, mask {}μs, ff {}μs",
+        "{}Total time: {}ms TTFM {}μs, mask {}μs, ff {}μs, mask+ff {}ms + compile {}ms",
         perf_counters,
         t0.elapsed().as_millis(),
         total.llg.ttfm_us,
         total.llg.mask_us,
         total.llg.ff_tokens_us,
+        num_with_commas(total.llg.mask_ms_total + total.llg.ff_tokens_ms_total),
+        num_with_commas(total.llg.ttfm_ms_total),
     );
 
     save_text_to_file("tmp/validation_errors.txt", &validation_errors.join("\n"));
@@ -1097,6 +1104,7 @@ struct LlgTotalStats {
     num_parsers: usize,
     num_threads: usize,
     ttfm_us: usize,
+    ttfm_ms_total: usize,
     json_compile_us: usize,
     parser_create_us: usize,
     first_mask_us: usize,

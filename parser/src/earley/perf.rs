@@ -71,10 +71,10 @@ impl Display for PerfTimer {
             f,
             "{}: avg:{}μs calls:{} max:{}μs total:{}ms",
             self.name,
-            avg,
-            num_calls,
-            max_time_us,
-            time_us / 1000
+            num_with_commas(avg),
+            num_with_commas(num_calls),
+            num_with_commas(max_time_us),
+            num_with_commas(time_us / 1000)
         )
     }
 }
@@ -82,6 +82,7 @@ impl Display for PerfTimer {
 #[derive(Serialize)]
 pub struct ParserPerfCounters {
     pub force_bytes: PerfTimer,
+    pub force_bytes_empty: PerfTimer,
     pub tokenize_ff: PerfTimer,
     pub compute_bias: PerfTimer,
     pub compute_mask: PerfTimer,
@@ -91,6 +92,7 @@ impl ParserPerfCounters {
     pub fn new() -> Self {
         Self {
             force_bytes: PerfTimer::new("force_bytes"),
+            force_bytes_empty: PerfTimer::new("force_bytes_empty"),
             tokenize_ff: PerfTimer::new("tokenize_ff"),
             compute_bias: PerfTimer::new("compute_bias"),
             compute_mask: PerfTimer::new("compute_mask"),
@@ -100,6 +102,7 @@ impl ParserPerfCounters {
     pub fn counters(&self) -> Vec<&PerfTimer> {
         vec![
             &self.force_bytes,
+            &self.force_bytes_empty,
             &self.tokenize_ff,
             &self.compute_bias,
             &self.compute_mask,
@@ -115,4 +118,21 @@ impl Display for ParserPerfCounters {
         }
         Ok(())
     }
+}
+
+pub fn num_with_commas(x: usize) -> String {
+    let s = x.to_string();
+    let len = s.len();
+    let offset = len % 3;
+    let mut result = String::new();
+
+    for (i, c) in s.chars().enumerate() {
+        // Insert a comma once we've passed 'offset' and every 3 digits after that.
+        if i != 0 && i >= offset && (i - offset) % 3 == 0 {
+            result.push(',');
+        }
+        result.push(c);
+    }
+
+    result
 }

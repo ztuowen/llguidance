@@ -2421,9 +2421,18 @@ impl Parser {
 
     pub fn force_bytes(&mut self) -> &[u8] {
         let t0 = Instant::now();
+        let prev_len = self.currently_forced_bytes().len();
         self.with_shared(|state| state.force_bytes());
-        self.state.perf_counters.force_bytes.record(t0.elapsed());
-        self.currently_forced_bytes()
+        let r = self.currently_forced_bytes();
+        if r.len() > prev_len {
+            self.state.perf_counters.force_bytes.record(t0.elapsed());
+        } else {
+            self.state
+                .perf_counters
+                .force_bytes_empty
+                .record(t0.elapsed());
+        }
+        r
     }
 
     pub fn scan_eos(&mut self) -> bool {
