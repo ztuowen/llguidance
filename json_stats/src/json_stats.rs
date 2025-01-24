@@ -91,7 +91,19 @@ pub struct CliOptions {
     #[arg(long, default_value = "meta-llama/Llama-3.1-8B-Instruct")]
     tokenizer: String,
 
-    // .json files or folders with .json files
+    /// Only process files with specified string in the name
+    #[arg(long)]
+    filter: Option<String>,
+
+    /// Only process '"valid": true' testcases
+    #[arg(long, default_value_t = false)]
+    only_valid: bool,
+
+    /// Only process '"valid": false' testcases
+    #[arg(long, default_value_t = false)]
+    only_invalid: bool,
+
+    /// .json files or folders with .json files
     #[arg(value_name = "FILES")]
     files: Vec<String>,
 }
@@ -163,6 +175,7 @@ struct LlgResult {
     num_tests: usize,
     num_valid_tests: usize,
     num_invalid_tests: usize,
+    num_all_tokens: usize,
 
     avg_parser_items: usize,
     max_avg_parser_items: usize,
@@ -507,10 +520,6 @@ impl TestEnv {
         ref_parser: Option<&TokenParser>,
         t: &JsonTestSequence,
     ) -> Result<()> {
-        // if self.cli.llg_masks && !t.valid {
-        //     return Ok(());
-        // }
-
         let mut parser = parser.deep_clone();
         parser.start_without_prompt();
 
@@ -532,6 +541,21 @@ impl TestEnv {
         let mut opts = JsonCompileOptions::default();
         opts.whitespace_flexible = !self.cli.compact;
         let mut res = LlgResult::default();
+
+        let all_tests = test_file
+            .tests
+            .iter()
+            .filter(|t| {
+                (self.cli.only_valid && t.valid)
+                    || (self.cli.only_invalid && !t.valid)
+                    || (!self.cli.only_valid && !self.cli.only_invalid)
+            })
+            .collect::<Vec<_>>();
+        for t in &all_tests {
+            let dstr = serde_json::to_string(&t.data).unwrap();
+            let tokens = self.tok_env.tokenize(&dstr);
+            res.num_all_tokens += tokens.len();
+        }
 
         let t0 = std::time::Instant::now();
         let schema = opts.json_to_llg_no_validate(test_file.schema.clone());
@@ -586,7 +610,7 @@ impl TestEnv {
         let ref_parser = ref_parser.map(|p| p.unwrap());
 
         if self.cli.llg_test {
-            for (idx, t) in test_file.tests.iter().enumerate() {
+            for (idx, t) in all_tests.iter().enumerate() {
                 let t0 = std::time::Instant::now();
                 if let Err(e) = self.run_llg_test(&mut res, &parser, ref_parser.as_ref(), t) {
                     if res.validation_error.is_none() {
@@ -772,6 +796,10 @@ fn main() {
         files.retain(|f| !f.contains("Handwritten") && !f.contains("Synthesized"));
     }
 
+    if let Some(f) = options.filter.as_ref() {
+        files.retain(|f2| f2.contains(f));
+    }
+
     let tok_env: TokEnv =
         toktrie_hf_tokenizers::ByteTokenizerEnv::from_name(&options.tokenizer, None)
             .unwrap()
@@ -851,16 +879,18 @@ fn main() {
         total.num_files += 1;
         total.full_size += s.full_size;
 
+        if s.file_info.num_invalid_tests + s.file_info.num_invalid_tests == 0 {
+            total.num_testless_files += 1;
+        }
+
         if let Some(llg) = s.llg_result {
             let log_err = !options.llg_masks;
 
             if llg.json_error.is_some() {
                 total.llg.num_json_error += 1;
-            }
-            if llg.parser_error.is_some() {
+            } else if llg.parser_error.is_some() {
                 total.llg.num_parser_error += 1;
-            }
-            if let Some(msg) = llg.validation_error.as_ref() {
+            } else if let Some(msg) = llg.validation_error.as_ref() {
                 if msg.contains("consider making your grammar left-recursive")
                     || msg.contains("try avoiding single-byte/short lexemes")
                 {
@@ -879,9 +909,7 @@ fn main() {
                     }
                 }
             } else {
-                if llg.num_valid_tests > 0 {
-                    total.llg.num_correct_schemas += 1;
-                }
+                total.llg.num_correct_schemas += 1;
             }
 
             total.llg.num_tokens += llg.num_tokens;
@@ -945,11 +973,8 @@ fn main() {
             (total.llg.num_ff_tokens * 10000 / total.llg.num_tokens) as f32 / 10000.0;
     }
 
+    total.llg_json = llg_totals.clone();
     eprintln!("{}", serde_json::to_string_pretty(&total).unwrap());
-    eprintln!(
-        "LLG: {}",
-        serde_json::to_string_pretty(&llg_totals).unwrap()
-    );
     eprintln!("Total time: {}ms", t0.elapsed().as_millis());
 
     save_text_to_file("tmp/validation_errors.txt", &validation_errors.join("\n"));
@@ -1074,6 +1099,7 @@ struct LlgTotalStats {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 struct TotalStats {
     num_files: usize,
+    num_testless_files: usize,
     num_valid_tests: usize,
     num_invalid_tests: usize,
     num_schema_error: usize,
@@ -1083,6 +1109,7 @@ struct TotalStats {
     full_size: usize,
     stripped_size: usize,
     llg: LlgTotalStats,
+    llg_json: Value,
 }
 
 fn read_file_to_string(filename: &str) -> String {
