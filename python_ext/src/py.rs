@@ -243,7 +243,9 @@ impl LLTokenizer {
     }
 
     fn test_trace_tokens(&self, tokens: Vec<u32>) -> String {
-        self.tok_trie().test_trace_tokens(&tokens)
+        self.tok_trie()
+            .test_trace_tokens(&tokens)
+            .replace("\\n", "\n")
     }
 
     fn dbg_tokens(&self, tokens: Vec<u32>) -> String {
