@@ -55,6 +55,10 @@ pub struct CliOptions {
     #[arg(long)]
     llg_test_slicer: bool,
 
+    /// Use white-space inflexible grammar (force no whitespace in JSON).
+    #[arg(long, default_value_t = false)]
+    compact: bool,
+
     /// Validate results against known good results; similar to 'diff FILE tmp/llg_sem_results.json'
     #[arg(long)]
     expected: Option<String>,
@@ -91,8 +95,6 @@ pub struct CliOptions {
     #[arg(value_name = "FILES")]
     files: Vec<String>,
 }
-
-const MASK_STEPS: usize = 16;
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default, PartialEq, Eq)]
 struct LlgSemanticResult {
@@ -174,18 +176,11 @@ struct LlgResult {
 
     lexer_stats: LexerStats,
 
-    #[serde(skip)]
-    slow_mask_count: [usize; MASK_STEPS],
-    #[serde(skip)]
-    slow_mask_us: [usize; MASK_STEPS],
-
-    #[serde(skip)]
-    slow_mask_count_a: [usize; MASK_STEPS],
-    #[serde(skip)]
-    slow_mask_us_a: [usize; MASK_STEPS],
-
-    // #[serde(skip)]
     all_mask_us: Vec<usize>,
+    ff_tokens_us: Vec<usize>,
+
+    #[serde(skip)]
+    all_mask_us_a: Vec<usize>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     json_error: Option<String>,
@@ -306,12 +301,123 @@ fn log_fraction_plot(times: &mut Vec<usize>) -> String {
     csv
 }
 
+enum MaskResult {
+    Accept { n_tokens: usize },
+    Reject { reason: String },
+}
+
 impl TestEnv {
-    fn run_llg_test_inner(
+    fn check_mask(
         &self,
         stats: &mut LlgResult,
         parser: &mut TokenParser,
         mut ref_parser: Option<&mut TokenParser>,
+        tidx: usize,
+        tokens: &[u32],
+    ) -> Result<MaskResult> {
+        let trie = self.tok_env.tok_trie();
+        let token = tokens[tidx];
+
+        let t0 = std::time::Instant::now();
+
+        if !self.cli.llg_no_forcing {
+            let forced = parser.compute_ff_tokens();
+            if forced.len() > 0 {
+                let us = t0.elapsed().as_micros() as usize;
+                stats.ff_tokens_us.push(us);
+                let endp = std::cmp::min(tokens.len(), tidx + forced.len());
+                if &tokens[tidx..endp] == forced.as_slice() {
+                    return Ok(MaskResult::Accept {
+                        n_tokens: forced.len(),
+                    });
+                } else {
+                    return Ok(MaskResult::Reject {
+                        reason: format!(
+                            "forced tokens {:?} != {:?}",
+                            trie.tokens_dbg(&forced),
+                            trie.tokens_dbg(&tokens[tidx..endp])
+                        ),
+                    });
+                }
+            }
+        }
+
+        let m = parser.compute_mask()?; // .unwrap_or_else(|_| trie.alloc_token_set());
+        let us = t0.elapsed().as_micros() as usize;
+        let pstats = parser.last_step_stats();
+
+        if let Some(ref_parser) = &mut ref_parser {
+            let m2 = ref_parser.compute_mask()?;
+            if m != m2 {
+                let mut missing_slicer = m2.clone();
+                missing_slicer.sub(&m);
+                let mut missing_parser = m.clone();
+                missing_parser.sub(&m2);
+                eprintln!(
+                    "{}:\n{}\n{}",
+                    tidx,
+                    trie.token_set_dbg(&missing_slicer),
+                    trie.token_set_dbg(&missing_parser)
+                );
+                panic!("mismatch");
+            }
+        }
+
+        stats.all_mask_us.push(us);
+
+        // && pstats.lexer_cost < 7 * us as u64
+        if self.cli.csv && us > 1000 {
+            static CSV_LINE: AtomicUsize = AtomicUsize::new(0);
+            let line_no = CSV_LINE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            if line_no == 0 {
+                println!("MASK,us,lexer_cost,slices,items,rows,cached_rows,trie_nodes,allowed_tokens,est_time");
+            }
+            println!(
+                "{},{},{},{},{},{},{},{},{},{}",
+                if us > 1000 { "SLOW" } else { "OK" },
+                us,
+                pstats.lexer_cost,
+                pstats.slices_applied,
+                pstats.all_items,
+                pstats.rows,
+                pstats.cached_rows,
+                pstats.trie_nodes_walked,
+                m.num_set(),
+                (pstats.trie_nodes_walked as u64 * 4 + pstats.lexer_cost * 60) / 1000
+            );
+            // eprintln!("{}", parser.parser.lexer_stats());
+
+            // eprintln!("{:?}", pstats);
+        }
+
+        stats.sum_parser_items += pstats.all_items;
+        stats.max_parser_items = std::cmp::max(stats.max_parser_items, pstats.all_items);
+        stats.max_lexer_cost = std::cmp::max(stats.max_lexer_cost, pstats.lexer_cost);
+        stats.lexer_cost += pstats.lexer_cost;
+        stats.trie_nodes_walked += pstats.trie_nodes_walked;
+
+        let is_big = m.num_set() >= 120_000;
+        let sliced = pstats.slices_applied > 0;
+        let cond_a = is_big && sliced;
+        if cond_a {
+            stats.all_mask_us_a.push(us);
+        }
+
+        stats.max_mask_us = std::cmp::max(stats.max_mask_us, us);
+        if m.is_allowed(token) {
+            Ok(MaskResult::Accept { n_tokens: 1 })
+        } else {
+            Ok(MaskResult::Reject {
+                reason: format!("mask: {}", trie.token_set_dbg(&m)),
+            })
+        }
+    }
+
+    fn run_llg_test_inner(
+        &self,
+        stats: &mut LlgResult,
+        parser: &mut TokenParser,
+        mut ref_parser: Option<TokenParser>,
         t: &JsonTestSequence,
     ) -> Result<()> {
         let dstr = serde_json::to_string(&t.data).unwrap();
@@ -323,113 +429,56 @@ impl TestEnv {
 
         // println!("tokenized: {}", trie.tokens_dbg(&tokens));
 
-        for (tidx, &token) in tokens.iter().enumerate() {
+        let mut tidx = 0;
+
+        while tidx < tokens.len() {
             // eprintln!("WILL TEST {}: {}", tidx, trie.token_dbg(token));
 
-            stats.num_tokens += 1;
-            let mut dbg = String::new();
-
-            let ok = if masks {
-                let t0 = std::time::Instant::now();
-                let m = parser.compute_mask()?; // .unwrap_or_else(|_| trie.alloc_token_set());
-                let us = t0.elapsed().as_micros() as usize;
-                let pstats = parser.last_step_stats();
-
-                if let Some(ref_parser) = &mut ref_parser {
-                    let m2 = ref_parser.compute_mask()?;
-                    if m != m2 {
-                        let mut missing_slicer = m2.clone();
-                        missing_slicer.sub(&m);
-                        let mut missing_parser = m.clone();
-                        missing_parser.sub(&m2);
-                        eprintln!(
-                            "{}:\n{}\n{}",
-                            tidx,
-                            trie.token_set_dbg(&missing_slicer),
-                            trie.token_set_dbg(&missing_parser)
-                        );
-                        panic!("mismatch");
-                    }
-                }
-
-                stats.all_mask_us.push(us);
-
-                // && pstats.lexer_cost < 7 * us as u64
-                if self.cli.csv && us > 1000 {
-                    static CSV_LINE: AtomicUsize = AtomicUsize::new(0);
-                    let line_no = CSV_LINE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                    if line_no == 0 {
-                        println!("MASK,us,lexer_cost,slices,items,rows,cached_rows,trie_nodes,allowed_tokens,est_time");
-                    }
-                    println!(
-                        "{},{},{},{},{},{},{},{},{},{}",
-                        if us > 1000 { "SLOW" } else { "OK" },
-                        us,
-                        pstats.lexer_cost,
-                        pstats.slices_applied,
-                        pstats.all_items,
-                        pstats.rows,
-                        pstats.cached_rows,
-                        pstats.trie_nodes_walked,
-                        m.num_set(),
-                        (pstats.trie_nodes_walked as u64 * 4 + pstats.lexer_cost * 60) / 1000
-                    );
-                    // eprintln!("{}", parser.parser.lexer_stats());
-
-                    // eprintln!("{:?}", pstats);
-                }
-
-                stats.sum_parser_items += pstats.all_items;
-                stats.max_parser_items = std::cmp::max(stats.max_parser_items, pstats.all_items);
-                stats.max_lexer_cost = std::cmp::max(stats.max_lexer_cost, pstats.lexer_cost);
-                stats.lexer_cost += pstats.lexer_cost;
-                stats.trie_nodes_walked += pstats.trie_nodes_walked;
-
-                let step = us.next_power_of_two().trailing_zeros() as usize;
-                let step = std::cmp::min(step, MASK_STEPS - 1);
-
-                stats.slow_mask_count[step] += 1;
-                stats.slow_mask_us[step] += us;
-
-                // assert!(pstats.slices_applied <= 1);
-
-                let is_big = m.num_set() >= 120_000;
-                let sliced = pstats.slices_applied > 0;
-                let cond_a = is_big && sliced;
-                if cond_a {
-                    stats.slow_mask_count_a[step] += 1;
-                    stats.slow_mask_us_a[step] += us;
-                }
-
-                stats.max_mask_us = std::cmp::max(stats.max_mask_us, us);
-                let ok = m.is_allowed(token);
-                if !ok && t.valid {
-                    dbg = format!("\n    {}", trie.token_set_dbg(&m));
-                }
-                ok
+            let mask_res = if masks {
+                self.check_mask(stats, parser, ref_parser.as_mut(), tidx, &tokens)?
             } else {
-                parser.validate_token(token)?
+                if parser.validate_token(tokens[tidx])? {
+                    MaskResult::Accept { n_tokens: 1 }
+                } else {
+                    MaskResult::Reject {
+                        reason: "validate_token".to_string(),
+                    }
+                }
             };
 
-            if !ok {
-                if t.valid {
-                    bail!(
-                        "token not accepted at {} * {} * {} {}",
-                        trie.tokens_dbg(&tokens[tidx.saturating_sub(50)..tidx]),
-                        trie.tokens_dbg(&tokens[tidx..tidx + 1]),
-                        trie.tokens_dbg(&tokens[tidx + 1..std::cmp::min(tidx + 5, tokens.len())]),
-                        dbg
-                    )
-                } else {
-                    return Ok(());
+            let n_tokens = match mask_res {
+                MaskResult::Accept { n_tokens: nt } => nt,
+                MaskResult::Reject { reason } => {
+                    stats.num_tokens += 1;
+                    if t.valid {
+                        bail!(
+                            "token not accepted at {} * {} * {} {}",
+                            trie.tokens_dbg(&tokens[tidx.saturating_sub(50)..tidx]),
+                            trie.tokens_dbg(&tokens[tidx..tidx + 1]),
+                            trie.tokens_dbg(
+                                &tokens[tidx + 1..std::cmp::min(tidx + 5, tokens.len())]
+                            ),
+                            reason
+                        )
+                    } else {
+                        return Ok(());
+                    }
                 }
-            }
-            let bt = parser.consume_token(token)?;
-            assert!(bt == 0);
+            };
 
-            if let Some(ref_parser) = &mut ref_parser {
-                let bt = ref_parser.consume_token(token)?;
+            stats.num_tokens += n_tokens;
+
+            for _ in 0..n_tokens {
+                let token = tokens[tidx];
+                let bt = parser.consume_token(token)?;
                 assert!(bt == 0);
+
+                if let Some(ref_parser) = &mut ref_parser {
+                    let bt = ref_parser.consume_token(token)?;
+                    assert!(bt == 0);
+                }
+
+                tidx += 1;
             }
         }
 
@@ -468,7 +517,7 @@ impl TestEnv {
         let mut ref_parser = ref_parser.map(|p| p.deep_clone());
         ref_parser.as_mut().map(|p| p.start_without_prompt());
 
-        let r = self.run_llg_test_inner(stats, &mut parser, ref_parser.as_mut(), t);
+        let r = self.run_llg_test_inner(stats, &mut parser, ref_parser, t);
 
         let m = parser.parser.metrics_mut();
         stats.slicer_leftover_us += m.slicer_leftover_us;
@@ -480,7 +529,8 @@ impl TestEnv {
     }
 
     fn run_llg_compile(&self, test_file: &JsonTest) -> LlgResult {
-        let opts = JsonCompileOptions::default();
+        let mut opts = JsonCompileOptions::default();
+        opts.whitespace_flexible = !self.cli.compact;
         let mut res = LlgResult::default();
 
         let t0 = std::time::Instant::now();
@@ -553,9 +603,10 @@ impl TestEnv {
                 res.masks_us += t0.elapsed().as_micros() as usize;
             }
 
-            if res.num_tokens > 0 {
-                res.avg_parser_items = res.sum_parser_items / res.num_tokens;
-                res.max_avg_parser_items = res.sum_parser_items / res.num_tokens;
+            let n_masks = res.all_mask_us.len();
+            if n_masks > 0 {
+                res.avg_parser_items = res.sum_parser_items / n_masks;
+                res.max_avg_parser_items = res.sum_parser_items / n_masks;
             }
         }
 
@@ -777,8 +828,6 @@ fn main() {
     let mut all_file_info = vec![];
     let mut llg_results = vec![];
     let mut llg_sem_results = vec![];
-    let mut histogram = MaskHistogram::default();
-    let mut histogram_a = MaskHistogram::default();
     let mut llg_totals = json!({});
     let mut all_masks_us = vec![];
     let mut all_ttfm_us = vec![];
@@ -836,6 +885,10 @@ fn main() {
             }
 
             total.llg.num_tokens += llg.num_tokens;
+            total.llg.num_masks += llg.all_mask_us.len();
+            total.llg.ff_tokens_us += llg.ff_tokens_us.iter().sum::<usize>();
+            total.llg.num_ff_token_seqs += llg.ff_tokens_us.len();
+
             json_sum(&mut llg_totals, &serde_json::to_value(&llg).unwrap());
 
             if llg.ttfm_us > 0 {
@@ -852,14 +905,8 @@ fn main() {
             total.llg.mask_us_total += llg.masks_us;
             total.llg.max_mask_us = std::cmp::max(total.llg.max_mask_us, llg.max_mask_us);
 
-            for i in 0..MASK_STEPS {
-                histogram.count[i] += llg.slow_mask_count[i];
-                histogram.us[i] += llg.slow_mask_us[i];
-                histogram_a.count[i] += llg.slow_mask_count_a[i];
-                histogram_a.us[i] += llg.slow_mask_us_a[i];
-                total.llg.mask_us_total_a += llg.slow_mask_us_a[i];
-                total.llg.num_masks_a += llg.slow_mask_count_a[i];
-            }
+            total.llg.mask_us_total_a += llg.all_mask_us_a.iter().sum::<usize>();
+            total.llg.num_masks_a += llg.all_mask_us_a.len();
 
             llg_sem_results.push(LlgSemanticResult::from_llg_result(&llg));
             llg_results.push(llg);
@@ -874,6 +921,10 @@ fn main() {
         }
     }
 
+    if total.llg.num_ff_token_seqs > 0 {
+        total.llg.ff_tokens_us /= total.llg.num_ff_token_seqs;
+    }
+
     if total.llg.num_parsers > 0 {
         total.llg.ttfm_us /= total.llg.num_parsers;
         total.llg.parser_create_us /= total.llg.num_parsers;
@@ -882,34 +933,16 @@ fn main() {
         total.llg.num_threads = num_threads;
     }
 
-    if total.llg.num_tokens > 0 {
-        total.llg.mask_us = total.llg.mask_us_total / total.llg.num_tokens;
-        total.llg.num_masks_a_frac = total.llg.num_masks_a * 1000 / total.llg.num_tokens;
+    if total.llg.num_masks > 0 {
+        total.llg.mask_us = total.llg.mask_us_total / total.llg.num_masks;
+        total.llg.num_masks_a_frac = total.llg.num_masks_a * 1000 / total.llg.num_masks;
         total.llg.mask_us_total_a_frac = total.llg.mask_us_total_a * 1000 / total.llg.mask_us_total;
     }
 
-    let mut histogram_csv = format!(
-        "{:>10} {:>10} {:>10} {:>10} {:>10} {:>10} {:>10}\n",
-        "up_to", "sum", "sum_a", "s", "s_a", "count", "count_a"
-    );
-    let mut hist_sum = 0;
-    let mut hist_sum_a = 0;
-    if total.llg.mask_us_total > 0 {
-        for i in 0..MASK_STEPS {
-            histogram.perc[i] = histogram.us[i] * 1000 / total.llg.mask_us_total;
-            hist_sum += histogram.us[i];
-            hist_sum_a += histogram_a.us[i];
-            histogram_csv.push_str(&format!(
-                "{:10} {:10.3} {:10.3} {:10.3} {:10.3} {:10} {:10}\n",
-                1 << i,
-                (hist_sum as f64 / 1000_000.0),
-                (hist_sum_a as f64 / 1000_000.0),
-                (histogram.us[i] as f64 / 1000_000.0),
-                (histogram_a.us[i] as f64 / 1000_000.0),
-                histogram.count[i],
-                histogram_a.count[i],
-            ));
-        }
+    if total.llg.num_tokens > 0 {
+        total.llg.num_ff_tokens = total.llg.num_tokens - total.llg.num_masks;
+        total.llg.ff_fraction =
+            (total.llg.num_ff_tokens * 10000 / total.llg.num_tokens) as f32 / 10000.0;
     }
 
     eprintln!("{}", serde_json::to_string_pretty(&total).unwrap());
@@ -920,7 +953,6 @@ fn main() {
     eprintln!("Total time: {}ms", t0.elapsed().as_millis());
 
     save_text_to_file("tmp/validation_errors.txt", &validation_errors.join("\n"));
-    save_text_to_file("tmp/mask_histogram.csv", &histogram_csv);
     save_text_to_file(
         "tmp/llg_masks_us.csv",
         &log_fraction_plot(&mut all_masks_us),
@@ -1011,13 +1043,6 @@ fn save_text_to_file(filename: &str, data: &str) {
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-struct MaskHistogram {
-    count: [usize; MASK_STEPS],
-    us: [usize; MASK_STEPS],
-    perc: [usize; MASK_STEPS],
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 struct LlgTotalStats {
     num_json_error: usize,
     num_parser_error: usize,
@@ -1026,6 +1051,10 @@ struct LlgTotalStats {
     num_parser_limits: usize,
     num_correct_schemas: usize,
     num_tokens: usize,
+    num_masks: usize,
+    num_ff_tokens: usize,
+    num_ff_token_seqs: usize,
+    ff_fraction: f32,
     num_parsers: usize,
     num_threads: usize,
     ttfm_us: usize,
@@ -1033,6 +1062,7 @@ struct LlgTotalStats {
     parser_create_us: usize,
     first_mask_us: usize,
     max_mask_us: usize,
+    ff_tokens_us: usize,
     mask_us: usize,
     mask_us_total: usize,
     mask_us_total_a: usize,
