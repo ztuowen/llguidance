@@ -209,10 +209,12 @@ fn main() {
         std::process::exit(1);
     }
 
-    let tok_env: TokEnv =
-        toktrie_hf_tokenizers::ByteTokenizerEnv::from_name("unsloth/Meta-Llama-3.1-8B-Instruct", None)
-            .unwrap()
-            .to_env();
+    let tok_env: TokEnv = toktrie_hf_tokenizers::ByteTokenizerEnv::from_name(
+        "unsloth/Meta-Llama-3.1-8B-Instruct",
+        None,
+    )
+    .unwrap()
+    .to_env();
 
     let t0 = std::time::Instant::now();
     let mut stats = Stats {
