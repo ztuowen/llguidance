@@ -3,7 +3,7 @@ use clap::Parser;
 use json_stats::SchemaStats;
 use jsonschema::Validator;
 use llguidance::{
-    earley::regexvec::LexerStats,
+    earley::{perf::ParserPerfCounters, regexvec::LexerStats},
     toktrie::{InferenceCapabilities, TokEnv},
     Constraint, JsonCompileOptions, ParserFactory, TokenParser,
 };
@@ -262,6 +262,7 @@ struct TestEnv {
     factory: Arc<ParserFactory>,
     ref_factory: Arc<ParserFactory>,
     file_name: String,
+    perf_counters: Arc<ParserPerfCounters>,
 }
 
 fn json_sum(curr: &mut Value, v: &Value) {
@@ -587,7 +588,8 @@ impl TestEnv {
 
         let t2 = std::time::Instant::now();
         let parser = match parser {
-            Ok(parser) => {
+            Ok(mut parser) => {
+                parser.parser.set_perf_counters(self.perf_counters.clone());
                 let mut constraint = Constraint::new(parser.clone());
                 constraint.compute_mask().unwrap();
                 res.first_mask_us = t2.elapsed().as_micros() as usize;
@@ -833,6 +835,7 @@ fn main() {
 
     let t0 = std::time::Instant::now();
     let par = num_threads > 1;
+    let perf_counters = Arc::new(ParserPerfCounters::new());
     let do_file = |file: &String| {
         let env = TestEnv {
             tok_env: tok_env.clone(),
@@ -840,6 +843,7 @@ fn main() {
             ref_factory: ref_factory.clone(),
             file_name: file.to_string(),
             cli: options.clone(),
+            perf_counters: perf_counters.clone(),
         };
         env.run_test()
     };
@@ -975,7 +979,14 @@ fn main() {
 
     total.llg_json = llg_totals.clone();
     eprintln!("{}", serde_json::to_string_pretty(&total).unwrap());
-    eprintln!("Total time: {}ms", t0.elapsed().as_millis());
+    eprintln!(
+        "{}Total time: {}ms TTFM {}μs, mask {}μs, ff {}μs",
+        perf_counters,
+        t0.elapsed().as_millis(),
+        total.llg.ttfm_us,
+        total.llg.mask_us,
+        total.llg.ff_tokens_us,
+    );
 
     save_text_to_file("tmp/validation_errors.txt", &validation_errors.join("\n"));
     save_text_to_file(

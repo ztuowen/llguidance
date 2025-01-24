@@ -30,6 +30,7 @@ use super::{
     grammar::{CGrammar, CSymIdx, CSymbol, RhsPtr},
     lexer::{LexerResult, PreLexeme},
     lexerspec::{Lexeme, LexemeIdx, LexemeSpec, LexerSpec},
+    perf::ParserPerfCounters,
     regexvec::{LexemeSet, LexerStats},
 };
 
@@ -354,6 +355,7 @@ struct ParserState {
     byte_to_token_idx: Vec<u32>,
 
     stats: ParserStats,
+    perf_counters: Arc<ParserPerfCounters>,
     limits: ParserLimits,
     metrics: ParserMetrics,
     max_all_items: usize,
@@ -543,6 +545,7 @@ impl ParserState {
             shared_box: Box::new(SharedState {
                 lexer_opt: Some(lexer),
             }),
+            perf_counters: Arc::new(ParserPerfCounters::new()),
         };
 
         r.scratch.grammar_stack.push(GrammarStackNode {
@@ -676,7 +679,9 @@ impl ParserState {
             set.allow_token(eos);
         }
 
-        self.stats.compute_time_us += t0.elapsed().as_micros() as u64;
+        let d = t0.elapsed();
+        self.stats.compute_time_us += d.as_micros() as u64;
+        self.perf_counters.compute_bias.record(d);
 
         set
     }
@@ -2360,6 +2365,14 @@ impl Parser {
         &self.state.stats
     }
 
+    pub fn set_perf_counters(&mut self, counters: Arc<ParserPerfCounters>) {
+        self.state.perf_counters = counters;
+    }
+
+    pub fn perf_counters(&self) -> &ParserPerfCounters {
+        &self.state.perf_counters
+    }
+
     pub fn metrics_mut(&mut self) -> &mut ParserMetrics {
         &mut self.state.metrics
     }
@@ -2406,7 +2419,11 @@ impl Parser {
     }
 
     pub fn force_bytes(&mut self) -> &[u8] {
+        let t0 = Instant::now();
         self.with_shared(|state| state.force_bytes());
+        if self.currently_forced_bytes().len() > 0 {
+            self.state.perf_counters.force_bytes.record(t0.elapsed());
+        }
         self.currently_forced_bytes()
     }
 

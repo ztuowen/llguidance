@@ -6,6 +6,7 @@ mod slicer;
 
 pub mod lexerspec;
 pub mod regexvec;
+pub mod perf;
 
 pub use from_guidance::grammars_from_json;
 #[allow(unused_imports)]
