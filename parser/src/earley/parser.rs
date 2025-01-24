@@ -2369,6 +2369,7 @@ impl Parser {
         self.state.perf_counters = counters;
     }
 
+    #[inline(always)]
     pub fn perf_counters(&self) -> &ParserPerfCounters {
         &self.state.perf_counters
     }
@@ -2421,9 +2422,7 @@ impl Parser {
     pub fn force_bytes(&mut self) -> &[u8] {
         let t0 = Instant::now();
         self.with_shared(|state| state.force_bytes());
-        if self.currently_forced_bytes().len() > 0 {
-            self.state.perf_counters.force_bytes.record(t0.elapsed());
-        }
+        self.state.perf_counters.force_bytes.record(t0.elapsed());
         self.currently_forced_bytes()
     }
 

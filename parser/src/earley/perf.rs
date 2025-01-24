@@ -82,19 +82,28 @@ impl Display for PerfTimer {
 #[derive(Serialize)]
 pub struct ParserPerfCounters {
     pub force_bytes: PerfTimer,
+    pub tokenize_ff: PerfTimer,
     pub compute_bias: PerfTimer,
+    pub compute_mask: PerfTimer,
 }
 
 impl ParserPerfCounters {
     pub fn new() -> Self {
         Self {
             force_bytes: PerfTimer::new("force_bytes"),
+            tokenize_ff: PerfTimer::new("tokenize_ff"),
             compute_bias: PerfTimer::new("compute_bias"),
+            compute_mask: PerfTimer::new("compute_mask"),
         }
     }
 
     pub fn counters(&self) -> Vec<&PerfTimer> {
-        vec![&self.force_bytes, &self.compute_bias]
+        vec![
+            &self.force_bytes,
+            &self.tokenize_ff,
+            &self.compute_bias,
+            &self.compute_mask,
+        ]
     }
 }
 

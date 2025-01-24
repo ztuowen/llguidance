@@ -8,6 +8,7 @@ use crate::{
     infoln, panic_utils, warn, Logger,
 };
 use anyhow::{ensure, Result};
+use instant::Instant;
 use serde_json::json;
 use toktrie::{InferenceCapabilities, SimpleVob, TokEnv, TokenId, INVALID_TOKEN};
 
@@ -333,7 +334,15 @@ impl TokenParser {
     // compute_mask() is called by Constraint::compute_mask().
     pub fn compute_mask(&mut self) -> Result<SimpleVob> {
         self.compute_mask_start_time = instant::Instant::now();
+        let r = self.compute_mask_inner();
+        self.parser
+            .perf_counters()
+            .compute_mask
+            .record(self.compute_mask_start_time.elapsed());
+        r
+    }
 
+    fn compute_mask_inner(&mut self) -> Result<SimpleVob> {
         self.check_initialized("compute_mask")?;
 
         infoln!(self, "compute_mask");
@@ -542,6 +551,7 @@ impl TokenParser {
         let do_force =
             forced_bytes.len() > num_existing_bytes && self.token_env.tokenize_is_canonical();
         if do_force {
+            let t0 = Instant::now();
             let (mut tokens, mut num_fixed) = self.token_env.tokenize_bytes_marker(&forced_bytes);
             if !tokens.starts_with(&existing_tokens) {
                 // whoops, re-tokenize without the prefix
@@ -573,6 +583,8 @@ impl TokenParser {
                 grm_tokens
             );
             token_prefix = forced_bytes[forced_bytes.len() - chop_bytes..].to_vec();
+
+            self.parser.perf_counters().tokenize_ff.record(t0.elapsed());
 
             if grm_tokens.len() > 0 {
                 infoln!(self, "fixed_tokens: {}", trie.tokens_dbg(&grm_tokens));

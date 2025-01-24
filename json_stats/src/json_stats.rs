@@ -165,7 +165,6 @@ struct LlgResult {
     parser_create_us: usize,
     first_mask_us: usize,
     max_ttfm_us: usize,
-    masks_us: usize,
     max_mask_us: usize,
     slicer_leftover_us: usize,
 
@@ -613,7 +612,6 @@ impl TestEnv {
 
         if self.cli.llg_test {
             for (idx, t) in all_tests.iter().enumerate() {
-                let t0 = std::time::Instant::now();
                 if let Err(e) = self.run_llg_test(&mut res, &parser, ref_parser.as_ref(), t) {
                     if res.validation_error.is_none() {
                         res.validation_error = Some(format!("test #{idx}: {e}"));
@@ -626,7 +624,6 @@ impl TestEnv {
                         res.num_invalid_tests += 1;
                     }
                 }
-                res.masks_us += t0.elapsed().as_micros() as usize;
             }
 
             let n_masks = res.all_mask_us.len();
@@ -934,10 +931,12 @@ fn main() {
             total.llg.json_compile_us += llg.json_compile_us;
             total.llg.parser_create_us += llg.parser_create_us;
             total.llg.first_mask_us += llg.first_mask_us;
-            total.llg.mask_us_total += llg.masks_us;
             total.llg.max_mask_us = std::cmp::max(total.llg.max_mask_us, llg.max_mask_us);
 
-            total.llg.mask_us_total_a += llg.all_mask_us_a.iter().sum::<usize>();
+            total.llg.mask_ms_total += llg.all_mask_us.iter().sum::<usize>();
+            total.llg.ff_tokens_ms_total += llg.ff_tokens_us.iter().sum::<usize>();
+
+            total.llg.mask_ms_total_a += llg.all_mask_us_a.iter().sum::<usize>();
             total.llg.num_masks_a += llg.all_mask_us_a.len();
 
             llg_sem_results.push(LlgSemanticResult::from_llg_result(&llg));
@@ -966,9 +965,9 @@ fn main() {
     }
 
     if total.llg.num_masks > 0 {
-        total.llg.mask_us = total.llg.mask_us_total / total.llg.num_masks;
+        total.llg.mask_us = total.llg.mask_ms_total / total.llg.num_masks;
         total.llg.num_masks_a_frac = total.llg.num_masks_a * 1000 / total.llg.num_masks;
-        total.llg.mask_us_total_a_frac = total.llg.mask_us_total_a * 1000 / total.llg.mask_us_total;
+        total.llg.mask_ms_total_a_frac = total.llg.mask_ms_total_a * 1000 / total.llg.mask_ms_total;
     }
 
     if total.llg.num_tokens > 0 {
@@ -976,6 +975,10 @@ fn main() {
         total.llg.ff_fraction =
             (total.llg.num_ff_tokens * 10000 / total.llg.num_tokens) as f32 / 10000.0;
     }
+
+    total.llg.mask_ms_total /= 1000;
+    total.llg.ff_tokens_ms_total /= 1000;
+    total.llg.mask_ms_total_a /= 1000;
 
     total.llg_json = llg_totals.clone();
     eprintln!("{}", serde_json::to_string_pretty(&total).unwrap());
@@ -1100,10 +1103,11 @@ struct LlgTotalStats {
     max_mask_us: usize,
     ff_tokens_us: usize,
     mask_us: usize,
-    mask_us_total: usize,
-    mask_us_total_a: usize,
+    ff_tokens_ms_total: usize,
+    mask_ms_total: usize,
+    mask_ms_total_a: usize,
     num_masks_a: usize,
-    mask_us_total_a_frac: usize,
+    mask_ms_total_a_frac: usize,
     num_masks_a_frac: usize,
 }
 
