@@ -91,7 +91,7 @@ pub struct CliOptions {
     additional_features: bool,
 
     /// Specify HF tokenizer to use
-    #[arg(long, default_value = "meta-llama/Llama-3.1-8B-Instruct")]
+    #[arg(long, default_value = "unsloth/Meta-Llama-3.1-8B-Instruct")]
     tokenizer: String,
 
     /// Only process files with specified string in the name

@@ -30,7 +30,7 @@ lazy_static! {
 lazy_static! {
     static ref PARSER_FACTORY: ParserFactory = {
         let env = toktrie_hf_tokenizers::ByteTokenizerEnv::from_name(
-            "meta-llama/Llama-3.1-8B-Instruct",
+            "unsloth/Meta-Llama-3.1-8B-Instruct",
             None,
         )
         .unwrap()

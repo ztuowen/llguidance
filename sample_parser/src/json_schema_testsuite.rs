@@ -210,7 +210,7 @@ fn main() {
     }
 
     let tok_env: TokEnv =
-        toktrie_hf_tokenizers::ByteTokenizerEnv::from_name("meta-llama/Llama-3.2-1B", None)
+        toktrie_hf_tokenizers::ByteTokenizerEnv::from_name("unsloth/Meta-Llama-3.1-8B-Instruct", None)
             .unwrap()
             .to_env();
 
