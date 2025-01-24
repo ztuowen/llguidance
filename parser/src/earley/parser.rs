@@ -354,6 +354,8 @@ struct ParserState {
     // use u32 to save space
     byte_to_token_idx: Vec<u32>,
 
+    last_force_bytes_len: usize,
+
     stats: ParserStats,
     perf_counters: Arc<ParserPerfCounters>,
     limits: ParserLimits,
@@ -532,6 +534,7 @@ impl ParserState {
             token_idx: 0,
             byte_to_token_idx: vec![],
             bytes: vec![],
+            last_force_bytes_len: usize::MAX,
             max_all_items: usize::MAX,
             limits,
             backtrack_byte_count: 0,
@@ -1152,11 +1155,18 @@ impl ParserState {
         self.lexer_spec().token_range_lexemes(possible)
     }
 
+    pub fn needs_force_bytes(&self) -> bool {
+        self.bytes.len() != self.last_force_bytes_len
+    }
+
     /// force_bytes() forces bytes into the parser, definitively.
     /// They must be, at each point, the only bytes allowed by
     /// the parser.  force_bytes() returns a 'Vec' of the bytes pushed.
     pub fn force_bytes(&mut self) {
         self.assert_definitive();
+        if !self.needs_force_bytes() {
+            return;
+        }
         trace!("force_bytes lexer_stack {}", self.lexer_stack.len());
         self.with_items_limit(self.limits.step_max_items, "ff_tokens", |s| {
             while let Some(b) = s.forced_byte() {
@@ -1218,6 +1228,7 @@ impl ParserState {
             }
         });
         self.assert_definitive();
+        self.last_force_bytes_len = self.bytes.len();
         let bytes = &self.bytes[self.byte_to_token_idx.len()..];
         trace!(
             "force_bytes exit {} lexer_stack={}",
@@ -1366,6 +1377,8 @@ impl ParserState {
             }
             let bt = std::mem::take(&mut self.backtrack_byte_count);
             if bt > 0 {
+                // reset cache in case we hit the same length again in future
+                self.last_force_bytes_len = usize::MAX;
                 self.bytes.truncate(self.bytes.len() - bt);
             }
             (true, bt)
@@ -2420,19 +2433,23 @@ impl Parser {
     }
 
     pub fn force_bytes(&mut self) -> &[u8] {
-        let t0 = Instant::now();
-        let prev_len = self.currently_forced_bytes().len();
-        self.with_shared(|state| state.force_bytes());
-        let r = self.currently_forced_bytes();
-        if r.len() > prev_len {
-            self.state.perf_counters.force_bytes.record(t0.elapsed());
+        if !self.state.needs_force_bytes() {
+            self.currently_forced_bytes()
         } else {
-            self.state
-                .perf_counters
-                .force_bytes_empty
-                .record(t0.elapsed());
+            let t0 = Instant::now();
+            let prev_len = self.currently_forced_bytes().len();
+            self.with_shared(|state| state.force_bytes());
+            let r = self.currently_forced_bytes();
+            if r.len() > prev_len {
+                self.state.perf_counters.force_bytes.record(t0.elapsed());
+            } else {
+                self.state
+                    .perf_counters
+                    .force_bytes_empty
+                    .record(t0.elapsed());
+            }
+            r
         }
-        r
     }
 
     pub fn scan_eos(&mut self) -> bool {
