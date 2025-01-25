@@ -3,13 +3,36 @@
 set -e
 cd $(dirname $0)/..
 
-PY_ONLY=0
-if [ "X$1" = "X--py" ] ; then
-    PY_ONLY=1
+TEST_RUST=0
+TEST_MB=0
+TEST_PY=0
+
+while [ "X$1" != "X" ] ; do
+    case "$1" in
+        --rust)
+            TEST_RUST=1
+            ;;
+        --mb)
+            TEST_MB=1
+            ;;
+        --py)
+            TEST_PY=1
+            ;;
+        *)
+            echo "Unknown option: $1"
+            exit 1
+            ;;
+    esac
     shift
+done
+
+if [ "$TEST_RUST$TEST_MB$TEST_PY" = 000 ] ; then
+    TEST_RUST=1
+    TEST_MB=1
+    TEST_PY=1
 fi
 
-if [ "$PY_ONLY" = 0 ] ; then
+if [ "$TEST_RUST" = 1 ] ; then
     cargo fmt --check
 
     cargo build --locked
@@ -20,6 +43,39 @@ if [ "$PY_ONLY" = 0 ] ; then
 
     (cd c_sample && make)
 fi
+
+if [ "$TEST_MB" = 1 ] ; then
+    if [ -d ../jsonschemabench/maskbench/data ] ; then
+        echo "MaskBench side by side"
+        MB_PATH=../jsonschemabench/maskbench
+    else
+        mkdir -p tmp
+        cd tmp
+        if test -d jsonschemabench/maskbench/data ; then
+            echo "MaskBench clone OK"
+        else
+            git clone -b main https://github.com/guidance-ai/jsonschemabench
+        fi
+        MB_PATH=tmp/jsonschemabench/maskbench
+        cd $(dirname $0)/..
+    fi
+
+    if [ -d $MB_PATH/data ] ; then
+        :
+    else
+        echo "MaskBench data missing"
+        exit 1
+    fi
+
+    MB_PATH=$(realpath $MB_PATH)
+    cd json_stats
+    cargo run --release -- \
+        --llg-masks \
+        --expected expected_maskbench.json \
+        $MB_PATH/data
+fi
+
+if [ "$TEST_PY" = 1 ] ; then
 
 pip uninstall -y llguidance || :
 
@@ -57,3 +113,5 @@ fi
 
 python -m pytest $PYTEST_FLAGS tests/unit/test_ll.py # main test
 python -m pytest $PYTEST_FLAGS tests/unit/test_[lgmp]*.py tests/unit/library "$@"
+
+fi # TEST_PY

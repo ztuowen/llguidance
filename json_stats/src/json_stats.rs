@@ -113,8 +113,6 @@ pub struct CliOptions {
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default, PartialEq, Eq)]
 struct LlgSemanticResult {
-    id: String,
-    num_tokens: usize,
     #[serde(skip_serializing_if = "Option::is_none")]
     json_error: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -126,8 +124,6 @@ struct LlgSemanticResult {
 impl LlgSemanticResult {
     fn from_llg_result(r: &LlgResult) -> Self {
         Self {
-            id: r.id.clone(),
-            num_tokens: r.num_tokens,
             json_error: r.json_error.clone(),
             parser_error: r.parser_error.clone(),
             validation_error: r.validation_error.clone(),
@@ -154,7 +150,7 @@ impl LlgSemanticResult {
         } else if let Some(e) = &self.validation_error {
             format!("VALIDATION: {}", short_limit_string(e))
         } else {
-            format!("OK ({})", self.num_tokens)
+            format!("OK")
         }
     }
 }
@@ -739,12 +735,12 @@ impl TestEnv {
             stats.file_info.meta = meta;
         }
 
-        save_json_to_file(file_name, &test_file);
-
         if self.cli.llg_compile {
             let mut llg = self.run_llg_compile(&test_file);
             llg.id = stats.file_info.id.clone();
             stats.llg_result = Some(llg);
+        } else {
+            save_json_to_file(file_name, &test_file);
         }
 
         stats
@@ -752,8 +748,6 @@ impl TestEnv {
 }
 
 fn main() {
-    let jsb_data = std::env::var("JSB_DATA").expect("JSB_DATA environment variable not set");
-
     let mut options = CliOptions::parse();
     if options.llg_masks {
         options.llg_test = true;
@@ -859,7 +853,7 @@ fn main() {
     let mut num_files_by_raw_feature: HashMap<String, usize> = HashMap::new();
     let mut all_file_info = vec![];
     let mut llg_results = vec![];
-    let mut llg_sem_results = vec![];
+    let mut llg_sem_results: HashMap<String, LlgSemanticResult> = HashMap::new();
     let mut llg_totals = json!({});
     let mut all_masks_us = vec![];
     let mut all_ttfm_us = vec![];
@@ -942,7 +936,7 @@ fn main() {
             total.llg.mask_ms_total_a += llg.all_mask_us_a.iter().sum::<usize>();
             total.llg.num_masks_a += llg.all_mask_us_a.len();
 
-            llg_sem_results.push(LlgSemanticResult::from_llg_result(&llg));
+            llg_sem_results.insert(llg.id.clone(), LlgSemanticResult::from_llg_result(&llg));
             llg_results.push(llg);
         }
 
@@ -1006,10 +1000,13 @@ fn main() {
     save_text_to_file("tmp/llg_ttfm_us.csv", &log_fraction_plot(&mut all_ttfm_us));
     save_json_to_file("tmp/test_total.json", &total);
     save_json_to_file("tmp/test_all_stats.json", &all_stats);
-    save_json_to_file(
-        format!("{}/metainfo/all_stats.json", jsb_data).as_str(),
-        &all_file_info,
-    );
+
+    if let Ok(jsb_data) = std::env::var("JSB_DATA") {
+        save_json_to_file(
+            format!("{}/metainfo/all_stats.json", jsb_data).as_str(),
+            &all_stats,
+        );
+    }
 
     if llg_results.len() > 0 {
         save_json_to_file("tmp/llg_results.json", &llg_results);
@@ -1022,7 +1019,7 @@ fn main() {
         &num_files_by_raw_feature,
     );
 
-    if let Some(e) = options.expected.as_ref() {
+    if let Some(expected_file_name) = options.expected.as_ref() {
         let id_to_filename = |id: &str| -> String {
             all_stats
                 .values()
@@ -1031,43 +1028,60 @@ fn main() {
                 .unwrap_or_else(|| id.to_string())
         };
 
-        eprintln!("Expected from {}...", e);
-        let expected_sem_results: Vec<LlgSemanticResult> =
-            serde_json::from_str(&read_file_to_string(&e)).unwrap();
-        let mut expected_map = expected_sem_results
-            .iter()
-            .map(|r| (r.id.clone(), r.clone()))
-            .collect::<HashMap<_, _>>();
-        for r in &llg_sem_results {
-            if let Some(exp) = expected_map.remove(&r.id) {
+        eprintln!("Expected from {}...", expected_file_name);
+        let mut expected_map: HashMap<String, LlgSemanticResult> =
+            serde_json::from_str(&read_file_to_string(&expected_file_name)).unwrap();
+        let mut num_err = 0;
+        let mut num_warn = 0;
+        for (id, r) in llg_sem_results.iter() {
+            if let Some(exp) = expected_map.remove(id) {
                 if r != &exp {
                     let status = if r.error_badness() < exp.error_badness() {
+                        num_err += 1;
                         "improvement"
                     } else if r.error_badness() == exp.error_badness() {
                         if options.ballpark {
                             continue;
                         }
+                        num_warn += 1;
                         "similar"
                     } else {
+                        num_err += 1;
                         "regression"
                     };
 
                     eprintln!(
                         "{}: {}: {} -> {}",
-                        id_to_filename(&r.id),
+                        id_to_filename(id),
                         status,
                         exp.info(),
                         r.info()
                     );
                 }
             } else {
-                eprintln!("{}: new ({})", id_to_filename(&r.id), r.info());
+                num_warn += 1;
+                eprintln!("{}: new ({})", id_to_filename(id), r.info());
             }
         }
         if !options.ballpark {
             for (id, exp) in expected_map {
+                num_err += 1;
                 eprintln!("{}: missing ({})", id_to_filename(&id), exp.info());
             }
+        }
+
+        if num_err > 0 {
+            eprintln!("FAILED: {} errors, {} warnings", num_err, num_warn);
+            std::process::exit(1);
+        } else if num_warn > 0 {
+            eprintln!("SOFT FAIL: {} warnings", num_warn);
+            eprintln!(
+                "TRY: cp {} {}",
+                "tmp/llg_sem_results.json", expected_file_name
+            );
+            std::process::exit(1);
+        } else {
+            eprintln!("PASSED");
         }
     }
 }
