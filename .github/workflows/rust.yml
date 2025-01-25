@@ -29,8 +29,17 @@ jobs:
     - name: Install python test dependencies
       run: ./scripts/install-deps.sh
 
-    - name: Run python guidance tests
-      run: ./scripts/test-guidance.sh
+    # these three steps are equivalent to just ./scripts/test-guidance.sh
+    # but we want to run them separately to get better timings/logs/etc
+
+    - name: Run Rust tests
+      run: ./scripts/test-guidance.sh --rust
+
+    - name: Run MaskBench
+      run: ./scripts/test-guidance.sh --mb
+
+    - name: Run Python Guidance tests
+      run: ./scripts/test-guidance.sh --py
 
     - name: Build sdist
       run: maturin build --sdist --zig

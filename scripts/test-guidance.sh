@@ -70,6 +70,7 @@ if [ "$TEST_MB" = 1 ] ; then
 
     MB_PATH=$(realpath $MB_PATH)
     cd json_stats
+    mkdir -p tmp
     cargo run --release -- \
         --llg-masks \
         --expected expected_maskbench.json \
