@@ -83,6 +83,7 @@ impl Display for PerfTimer {
 pub struct ParserPerfCounters {
     pub force_bytes: PerfTimer,
     pub force_bytes_empty: PerfTimer,
+    pub tmp_counter: PerfTimer,
     pub tokenize_ff: PerfTimer,
     pub compute_bias: PerfTimer,
     pub compute_mask: PerfTimer,
@@ -93,6 +94,7 @@ impl ParserPerfCounters {
         Self {
             force_bytes: PerfTimer::new("force_bytes"),
             force_bytes_empty: PerfTimer::new("force_bytes_empty"),
+            tmp_counter: PerfTimer::new("tmp_counter"),
             tokenize_ff: PerfTimer::new("tokenize_ff"),
             compute_bias: PerfTimer::new("compute_bias"),
             compute_mask: PerfTimer::new("compute_mask"),
@@ -106,6 +108,7 @@ impl ParserPerfCounters {
             &self.tokenize_ff,
             &self.compute_bias,
             &self.compute_mask,
+            &self.tmp_counter,
         ]
     }
 }

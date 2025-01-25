@@ -166,6 +166,23 @@ impl Lexer {
             .check_subsume(state, self.spec.extra_lexeme(extra_idx), budget)
     }
 
+    pub fn next_byte(&mut self, state: StateID) -> NextByte {
+        // there should be no transition from a state with a lazy match
+        // - it should have generated a lexeme
+        assert!(!state.has_lowest_match());
+
+        let mut forced = self.dfa.next_byte(state);
+
+        let info = self.dfa.state_desc(state);
+        if info.lowest_accepting.is_some() {
+            // with lowest accepting present, any transition to DEAD state
+            // (of which they are likely many) would generate a lexeme
+            forced = forced.make_fuzzy();
+        }
+
+        forced
+    }
+
     #[inline(always)]
     pub fn advance(&mut self, prev: StateID, byte: u8, enable_logging: bool) -> LexerResult {
         let state = self.dfa.transition(prev, byte);

@@ -379,20 +379,33 @@ impl RegexVec {
         let mut next_byte = NextByte::Dead;
         for (_, e) in iter_state(&self.rx_sets, state) {
             next_byte = next_byte | self.next_byte.next_byte(&self.exprs, e);
-            if next_byte == NextByte::SomeBytes {
+            if next_byte.is_some_bytes() {
                 break;
             }
         }
-        let next_byte = match next_byte {
-            NextByte::ForcedByte(b) => {
-                if let Some(b) = self.alpha.inv_map(b as usize) {
-                    NextByte::ForcedByte(b)
-                } else {
-                    NextByte::SomeBytes
-                }
-            }
-            _ => next_byte,
-        };
+
+        // This actually seems to make things slower
+        // match next_byte {
+        //     NextByte::ForcedByte(b) => {
+        //         let alen = self.alpha.len();
+        //         let off = state.as_usize() * alen;
+        //         let bs = self.state_table[off + b as usize];
+        //         self.state_table[off..off + alen].fill(StateID::DEAD);
+        //         self.state_table[off + b as usize] = bs;
+        //         // for idx in off..off + alen {
+        //         //     if idx - off != b as usize {
+        //         //         assert!(
+        //         //             self.state_table[idx] == StateID::MISSING
+        //         //                 || self.state_table[idx] == StateID::DEAD
+        //         //         );
+        //         //         self.state_table[idx] = StateID::DEAD;
+        //         //     }
+        //         // }
+        //     }
+        //     _ => {}
+        // }
+
+        let next_byte = next_byte.map_alpha(&self.alpha);
         desc.next_byte = Some(next_byte);
         next_byte
     }

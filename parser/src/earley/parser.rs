@@ -12,7 +12,7 @@ use std::{
 };
 
 use anyhow::{bail, ensure, Result};
-use derivre::{AlphabetInfo, RegexAst, StateID};
+use derivre::{AlphabetInfo, NextByte, RegexAst, StateID};
 use hashbrown::HashSet;
 use instant::Instant;
 use serde::{Deserialize, Serialize};
@@ -1404,13 +1404,37 @@ impl ParserState {
 
         // self.print_row(self.num_rows() - 1);
 
-        // TODO: use RegexVec::next_byte() here if possible ?
-        // currently, this will likely take a few thousand cycles to produce a byte
+        //let t0 = Instant::now();
+        let lex_state = self.lexer_state().lexer_state;
+        let quick_res = self.lexer_mut().next_byte(lex_state);
+        match quick_res {
+            NextByte::ForcedByte(b) => return Some(b),
+            _ => {}
+        }
 
-        self.run_speculative("forced_byte", |state| {
+        let slow_res = self.run_speculative("forced_byte", |state| {
             let mut r = ParserRecognizer { state };
+
+            // if we've got two byte hint from the lexer, try both bytes
+            if let NextByte::SomeBytes2([a, b]) = quick_res {
+                if r.try_push_byte(a) {
+                    r.pop_bytes(1);
+                    if r.try_push_byte(b) {
+                        r.pop_bytes(1);
+                        //r.state.perf_counters.forced_byte_miss.record(t0.elapsed());
+                        return None;
+                    }
+                }
+            }
+
+            // let alpha = r.state.lexer().dfa.alpha().unique_bytes();
+
+            // otherwise, start iterating from any hint from the lexer,
+            // otherwise from ' '
+            let b0 = quick_res.some_bytes().get(0).cloned().unwrap_or(b' ');
+            let mut b = b0;
             let mut byte_sym = None;
-            for b in 0..=255 {
+            loop {
                 if r.try_push_byte(b) {
                     r.pop_bytes(1);
                     // debug!("  forced: {:?}", b as char);
@@ -1421,9 +1445,21 @@ impl ParserState {
                         byte_sym = Some(b);
                     }
                 }
+                b = b.wrapping_add(1);
+                if b == b0 {
+                    break;
+                }
             }
             byte_sym
-        })
+        });
+
+        // if quick_res.is_some() {
+        //     assert_eq!(quick_res, slow_res);
+        // } else if slow_res.is_none() {
+        //     self.perf_counters.forced_byte_miss.record(t0.elapsed());
+        // }
+
+        slow_res
     }
 
     /// Advance the parser as if the current lexeme (if any)
