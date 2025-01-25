@@ -34,6 +34,7 @@ if [ "$TEST_RUST$TEST_MB$TEST_PY" = 000 ] ; then
 fi
 
 if [ "$TEST_RUST" = 1 ] ; then
+    cd "$TOP"
     cargo fmt --check
 
     cargo build --locked
@@ -46,6 +47,7 @@ if [ "$TEST_RUST" = 1 ] ; then
 fi
 
 if [ "$TEST_MB" = 1 ] ; then
+    cd "$TOP"
     if [ -d ../jsonschemabench/maskbench/data ] ; then
         echo "MaskBench side by side"
         MB_PATH=../jsonschemabench/maskbench
@@ -58,9 +60,9 @@ if [ "$TEST_MB" = 1 ] ; then
             git clone -b main https://github.com/guidance-ai/jsonschemabench
         fi
         MB_PATH=tmp/jsonschemabench/maskbench
-        cd "$TOP"
     fi
 
+    cd "$TOP"
     if [ -d $MB_PATH/data ] ; then
         :
     else
@@ -78,6 +80,8 @@ if [ "$TEST_MB" = 1 ] ; then
 fi
 
 if [ "$TEST_PY" = 1 ] ; then
+
+cd "$TOP"
 
 pip uninstall -y llguidance || :
 
