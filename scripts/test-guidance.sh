@@ -2,6 +2,7 @@
 
 set -e
 cd $(dirname $0)/..
+TOP=$(pwd)
 
 TEST_RUST=0
 TEST_MB=0
@@ -57,7 +58,7 @@ if [ "$TEST_MB" = 1 ] ; then
             git clone -b main https://github.com/guidance-ai/jsonschemabench
         fi
         MB_PATH=tmp/jsonschemabench/maskbench
-        cd $(dirname $0)/..
+        cd "$TOP"
     fi
 
     if [ -d $MB_PATH/data ] ; then
