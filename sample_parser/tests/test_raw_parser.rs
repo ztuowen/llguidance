@@ -173,3 +173,65 @@ fn test_ff_json3() {
         }),
     );
 }
+
+fn lark_str_test(lark: &str, should_accept: bool, s: &str) {
+    let mut p = make_parser(lark);
+    let trie = get_tok_env().tok_trie();
+    let tokens = get_tok_env().tokenize(s);
+    println!(
+        "\n\ntokens: {}, accpt={}\n",
+        trie.tokens_dbg(&tokens),
+        should_accept
+    );
+
+    for tok in tokens.iter() {
+        let m = p.compute_mask().unwrap();
+        if m.is_allowed(*tok) {
+            consume(&mut p, *tok);
+        } else {
+            if should_accept {
+                panic!("unexpected token: {}", trie.token_dbg(*tok));
+            }
+            return;
+        }
+    }
+    if p.is_accepting() {
+        if !should_accept {
+            panic!("unexpected accept");
+        }
+    } else {
+        if should_accept {
+            panic!("unexpected reject");
+        }
+    }
+}
+
+fn lark_str_test_many(lark: &str, passing: &[&str], failing: &[&str]) {
+    for s in passing {
+        lark_str_test(lark, true, s);
+    }
+    for s in failing {
+        lark_str_test(lark, false, s);
+    }
+}
+
+#[test]
+fn test_dot_unicode() {
+    lark_str_test_many(
+        r#"start: /.../ "abc" /.../"#,
+        &[
+            "abcabcabc",
+            "aaaabcccc",
+            // NOTE: Also ensures that multi-byte characters still count as a single character
+            "🔵🟠✅abc❌🟠🔵",
+        ],
+        &[
+            "aaabcccc",
+            "aaaaabcccc",
+            "aaaabccc",
+            "aaaabccccc",
+            "🔵🟠✅❌abc❌✅🟠🔵",
+            "🔵🟠abc🟠🔵",
+        ],
+    );
+}

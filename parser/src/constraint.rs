@@ -5,7 +5,7 @@ use crate::{
     api::StopReason,
     loginfo,
     output::{ParserOutput, Reporter},
-    TokenParser,
+    panic_utils, TokenParser,
 };
 
 #[derive(Clone)]
@@ -137,6 +137,11 @@ impl Constraint {
     /// The splice is never returned when ff_tokens are disabled in InferenceCapabilities.
     /// After this returns, commit_token() must be called with the sampled token if any.
     pub fn compute_mask(&mut self) -> Result<&StepResult> {
+        panic_utils::catch_unwind(std::panic::AssertUnwindSafe(|| self.compute_mask_inner()))
+            .map(|_| &self.last_res)
+    }
+
+    fn compute_mask_inner(&mut self) -> Result<()> {
         loginfo!(self.parser.logger, "\ncompute_mask()");
 
         if !self.started {
@@ -159,7 +164,7 @@ impl Constraint {
             }
         }
 
-        Ok(&self.last_res)
+        Ok(())
     }
 
     pub fn step_result(&self) -> &StepResult {
@@ -189,6 +194,12 @@ impl Constraint {
     /// It only returns 'STOP' if previous compute_mask() already returned 'STOP'
     /// (in which case there's little point calling commit_token()).
     pub fn commit_token(&mut self, sampled_token: Option<TokenId>) -> Result<CommitResult> {
+        panic_utils::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            self.commit_token_inner(sampled_token)
+        }))
+    }
+
+    fn commit_token_inner(&mut self, sampled_token: Option<TokenId>) -> Result<CommitResult> {
         let n_tokens = self.parser.num_tokens();
         loginfo!(
             self.parser.logger,
