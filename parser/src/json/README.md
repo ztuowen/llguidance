@@ -49,6 +49,7 @@ Number features (for both integer and number):
 - `maximum`
 - `exclusiveMinimum`
 - `exclusiveMaximum`
+- `multipleOf`
 
 ## Departures from JSON schema semantics
 
