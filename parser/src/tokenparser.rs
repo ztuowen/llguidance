@@ -221,7 +221,9 @@ impl TokenParser {
         let trie = self.token_env.tok_trie();
         infoln!(self, "prompt: {}", trie.tokens_dbg(&prompt));
         let mut prompt_bytes = trie.decode_raw(&prompt);
-        self.parser.force_bytes();
+        if self.can_force_bytes() {
+            self.parser.force_bytes();
+        }
         let grm_bytes = self.parser.get_bytes().to_vec();
         prompt_bytes.extend_from_slice(&grm_bytes);
 
@@ -229,7 +231,12 @@ impl TokenParser {
         let (res_prompt, chop_bytes) = self.tokenize_and_chop(tokens, num_fixed);
 
         let trie = self.token_env.tok_trie();
-        infoln!(self, "prompt+grm: {}", trie.tokens_dbg(&res_prompt));
+        infoln!(
+            self,
+            "prompt+grm: {} {}",
+            trie.tokens_dbg(&res_prompt),
+            self.parser.grammar().lexer_spec().no_forcing
+        );
 
         // if we moved a bunch of grammar to the prompt, update llm_tokens to reflect that
         if chop_bytes <= grm_bytes.len() {

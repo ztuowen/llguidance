@@ -138,13 +138,19 @@ fn grammar_from_json(
         input.rx_nodes = g.rx_nodes;
         input.contextual = g.contextual;
 
+        input.options.apply(&g.options);
+
+        if g.allow_initial_skip {
+            input.allow_initial_skip = true;
+        }
+
         input.lark_grammar = None;
         input.json_schema = None;
     }
 
     ensure!(input.nodes.len() > 0, "empty grammar");
 
-    let utf8 = !input.allow_invalid_utf8;
+    let utf8 = !input.options.allow_invalid_utf8;
     let lexer_spec = &mut ctx.lexer_spec;
     let grm = &mut ctx.grammar;
     let limits = &mut ctx.limits;
@@ -161,7 +167,7 @@ fn grammar_from_json(
 
     let grammar_id = lexer_spec.new_lexeme_class(skip)?;
 
-    if input.no_forcing {
+    if input.options.no_forcing {
         lexer_spec.no_forcing = true;
     }
     if input.allow_initial_skip && grammar_id == LexemeClass::ROOT {

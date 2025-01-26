@@ -24,6 +24,10 @@ Following are the extensions to Lark syntax:
   for example: `mygen[stop="\n", max_tokens=10, temperature=0.7]: /.*/`
 - if `stop` is specified (possibly as `""`) the rule is treated as `gen()` in Guidance;
   otherwise it is treated as `lexeme()`
+- certain grammar options can be set by using `%llguidnace { ... }`,
+  passing it a JSON object with the options;
+  see `LLGuidanceOptions` in [api.rs](../api.rs#L24);
+  example: `%llguidance { "no_forcing": true }`
 
 
 Following are currently not supported:

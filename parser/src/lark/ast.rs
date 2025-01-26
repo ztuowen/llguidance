@@ -56,6 +56,7 @@ pub enum Statement {
         path: String,
         names: Vec<String>,
     },
+    LLGuidance(String),
     #[allow(dead_code)]
     OverrideRule(Box<Rule>),
     #[allow(dead_code)]

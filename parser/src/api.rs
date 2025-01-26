@@ -21,6 +21,34 @@ pub struct TopLevelGrammar {
 /// cbindgen:ignore
 pub const DEFAULT_CONTEXTUAL: bool = true;
 
+/// In lark syntax, this can be specified as JSON object after '%llguidance' declaration in the grammar.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct LLGuidanceOptions {
+    /// Normally, when a sequence of bytes is forced by grammar, it is tokenized
+    /// canonically and forced as tokens.
+    /// With `no_forcing`, we let the model decide on tokenization.
+    /// This generally reduces both quality and speed, so should not be used
+    /// outside of testing.
+    #[serde(default)]
+    pub no_forcing: bool,
+
+    /// If set, the grammar will allow invalid utf8 byte sequences.
+    /// Any Unicode regex will cause an error.
+    #[serde(default)]
+    pub allow_invalid_utf8: bool,
+}
+
+impl LLGuidanceOptions {
+    pub fn apply(&mut self, other: &LLGuidanceOptions) {
+        if other.no_forcing {
+            self.no_forcing = true;
+        }
+        if other.allow_invalid_utf8 {
+            self.allow_invalid_utf8 = true;
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Default)]
 pub struct GrammarWithLexer {
     /// The name of this grammar, can be used in GenGrammar nodes.
@@ -61,18 +89,8 @@ pub struct GrammarWithLexer {
     #[serde(default)]
     pub allow_initial_skip: bool,
 
-    /// Normally, when a sequence of bytes is forced by grammar, it is tokenized
-    /// canonically and forced as tokens.
-    /// With `no_forcing`, we let the model decide on tokenization.
-    /// This generally reduces both quality and speed, so should not be used
-    /// outside of testing.
-    #[serde(default)]
-    pub no_forcing: bool,
-
-    /// If set, the grammar will allow invalid utf8 byte sequences.
-    /// Any Unicode regex will cause an error.
-    #[serde(default)]
-    pub allow_invalid_utf8: bool,
+    #[serde(flatten)]
+    pub options: LLGuidanceOptions,
 }
 
 impl Debug for GrammarWithLexer {

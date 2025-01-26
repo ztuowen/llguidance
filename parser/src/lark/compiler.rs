@@ -5,19 +5,32 @@ use hashbrown::{HashMap, HashSet};
 
 use crate::{
     api::{
-        GenGrammarOptions, GenOptions, GrammarId, GrammarWithLexer, Node, NodeProps, RegexId,
-        RegexSpec, TopLevelGrammar,
+        GenGrammarOptions, GenOptions, GrammarId, GrammarWithLexer, LLGuidanceOptions, Node,
+        NodeProps, RegexId, RegexSpec, TopLevelGrammar,
     },
+    json::json_merge,
     GrammarBuilder, JsonCompileOptions, NodeRef,
 };
 
 use super::{ast::*, common::lookup_common_regex, lexer::Location, parser::parse_lark};
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 struct Grammar {
     rules: HashMap<String, Rule>,
     tokens: HashMap<String, TokenDef>,
     ignore: Vec<Expansions>,
+    llguidance_options: serde_json::Value,
+}
+
+impl Default for Grammar {
+    fn default() -> Self {
+        Self {
+            rules: HashMap::new(),
+            tokens: HashMap::new(),
+            ignore: vec![],
+            llguidance_options: serde_json::Value::Object(serde_json::Map::new()),
+        }
+    }
 }
 
 struct Compiler {
@@ -449,7 +462,14 @@ impl Compiler {
         ensure!(grm.rules.contains_key("start"), "no start rule found");
         let ignore = std::mem::take(&mut grm.ignore);
         self.grammar = Arc::new(grm);
-        self.builder.add_grammar(GrammarWithLexer::default());
+
+        let opts: LLGuidanceOptions =
+            serde_json::from_value(self.grammar.llguidance_options.clone())
+                .map_err(|e| anyhow!("failed to parse %llguidance declaration: {}", e))?;
+        let mut grm_with_lex = GrammarWithLexer::default();
+        grm_with_lex.options = opts;
+        self.builder.add_grammar(grm_with_lex);
+
         let ignore = ignore
             .iter()
             .map(|exp| self.do_token_expansions(exp))
@@ -510,6 +530,14 @@ impl Grammar {
                     let regex = lookup_common_regex(&qname)?;
                     self.add_token_def(loc, n.to_string(), regex)?;
                 }
+            }
+            Statement::LLGuidance(json_value) => {
+                // first, check if it's valid JSON and all the right types
+                let _v: LLGuidanceOptions = serde_json::from_str(&json_value)
+                    .map_err(|e| anyhow!("failed to parse %llguidance declaration: {}", e))?;
+                // but in fact, we'll work on JSON object
+                let v: serde_json::Value = serde_json::from_str(&json_value).unwrap();
+                json_merge(&mut self.llguidance_options, &v);
             }
             Statement::OverrideRule(_) => {
                 bail!("override statement not supported yet");

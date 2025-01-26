@@ -20,6 +20,7 @@ pub enum Token {
     KwOverride,
     KwDeclare,
     KwJson,
+    KwLLGuidance,
     Colon,
     Equals,
     Comma,
@@ -84,6 +85,7 @@ impl Token {
         (Token::Dot, "."),
         (Token::DotDot, ".."),
         (Token::KwDeclare, "%declare"),
+        (Token::KwLLGuidance, "%llguidance"),
         (Token::KwIgnore, "%ignore"),
         (Token::KwImport, "%import"),
         (Token::KwOverride, "%override"),
@@ -193,7 +195,7 @@ pub fn lex_lark(input: &str) -> Result<Vec<Lexeme>> {
                     idx + 1
                 };
 
-                if token == Token::KwJson {
+                if token == Token::KwJson || token == Token::KwLLGuidance {
                     let (_, n_bytes) = parse_json_prefix(&input_bytes[end_idx..])?;
                     start_idx = end_idx;
                     end_idx += n_bytes;

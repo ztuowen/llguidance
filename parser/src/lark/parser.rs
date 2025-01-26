@@ -192,6 +192,10 @@ impl Parser {
                 bail!("Expected at least one name after %declare")
             }
             Ok(Statement::Declare(names))
+        } else if self.has_token(Token::KwLLGuidance) {
+            let value = self.peek_token().unwrap().value.clone();
+            self.advance();
+            Ok(Statement::LLGuidance(value))
         } else {
             bail!("expecting rule, token or statement")
         }

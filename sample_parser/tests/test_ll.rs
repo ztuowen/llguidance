@@ -180,6 +180,26 @@ fn test_ll_ff_json() {
 }
 
 #[test]
+fn test_ll_llg_options() {
+    check_lark_json(
+        r#"
+            %llguidance { "no_forcing": true }
+            start: "JSON" @sub
+        "#,
+        json!({
+            "type": "object",
+            "properties": {
+                "a_long_property_name": {
+                    "type": "number"
+                }
+            },
+            "additionalProperties": false
+        }),
+        &["", "JSON‧{\"‧a‧_‧long‧_‧property‧_‧name‧\":‧ ‧5‧}"],
+    );
+}
+
+#[test]
 fn test_ll_enum_json() {
     // check for proper quoting of the enum value
     check_lark_json(

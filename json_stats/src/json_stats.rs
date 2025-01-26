@@ -571,7 +571,7 @@ impl TestEnv {
         };
 
         if self.cli.llg_no_forcing {
-            schema.grammars[0].no_forcing = true;
+            schema.grammars[0].options.no_forcing = true;
         }
 
         let ref_parser = if self.cli.llg_test_slicer {
