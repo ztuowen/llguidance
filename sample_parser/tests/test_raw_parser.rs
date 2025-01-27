@@ -235,3 +235,30 @@ fn test_dot_unicode() {
         ],
     );
 }
+
+#[test]
+fn test_gbnf_compat() {
+    lark_str_test_many(
+        r#"start: ab{3,5}
+           ab: "a" | "b"
+        "#,
+        &["aba", "abaa", "aaaaa", "aabaa"],
+        &["aa", "ab", "aaaaaa"],
+    );
+
+    lark_str_test_many(
+        r#"start: ab{3,}
+           ab: "a" | "b"
+        "#,
+        &["aba", "abaa", "aaaaa", "aabaa", "aaaaaa"],
+        &["aa", "ab"],
+    );
+
+    lark_str_test_many(
+        r#"start: ab{,5}
+           ab: "a" | "b"
+        "#,
+        &["", "aa", "b", "aba", "abaa", "aaaaa", "aabaa"],
+        &["aaaaaa"],
+    );
+}

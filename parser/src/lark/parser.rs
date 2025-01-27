@@ -311,6 +311,27 @@ impl Parser {
                 None
             };
             range = Some((start_num, end_num.unwrap_or(start_num)));
+        } else if self.match_token(Token::LBrace) {
+            let start_num = if self.has_token(Token::Comma) {
+                0
+            } else {
+                self.expect_token(Token::Number)?.value.parse::<i32>()?
+            };
+            let end_num = if self.has_token(Token::Comma) {
+                self.expect_token(Token::Comma)?;
+                if self.has_token(Token::RBrace) {
+                    i32::MAX
+                } else {
+                    self.expect_token(Token::Number)?.value.parse::<i32>()?
+                }
+            } else {
+                start_num
+            };
+            self.expect_token(Token::RBrace)?;
+            if end_num == 0 {
+                bail!("End number in range cannot be 0")
+            }
+            range = Some((start_num, end_num));
         }
         Ok(Expr { atom, op, range })
     }
@@ -377,7 +398,12 @@ impl Parser {
             .match_token_with_value(Token::Rule)
             .or_else(|| self.match_token_with_value(Token::Token))
         {
-            if self.match_token(Token::LBrace) {
+            // {, and {12 are starts of GBNF-like repeat expressions
+            if self.has_tokens(&[Token::LBrace, Token::Comma])
+                || self.has_tokens(&[Token::LBrace, Token::Number])
+            {
+                Ok(Value::Name(name_token.value))
+            } else if self.match_token(Token::LBrace) {
                 let mut values = Vec::new();
                 values.push(self.parse_value()?);
                 while self.match_token(Token::Comma) {
@@ -452,6 +478,18 @@ impl Parser {
             } else {
                 false
             }
+        } else {
+            false
+        }
+    }
+
+    fn has_tokens(&mut self, toks: &[Token]) -> bool {
+        if self.tokens.len() < self.pos + toks.len() {
+            return false;
+        }
+        let pref = &self.tokens[self.pos..self.pos + toks.len()];
+        if pref.iter().zip(toks.iter()).all(|(a, b)| a.token == *b) {
+            true
         } else {
             false
         }

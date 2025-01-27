@@ -44,6 +44,10 @@ Following features of llguidance are currently not exposed in Lark syntax:
 
 - per-lexeme contextual and lazy flags
 
+Following are introduced for better compatibility with GBNF:
+
+- `expr{M,N}` can be used instead of `expr~M..N`
+
 ## Examples
 
 ### Llama JSON tool calling

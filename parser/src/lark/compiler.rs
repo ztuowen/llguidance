@@ -169,12 +169,21 @@ impl Compiler {
         let atom = self.do_token_atom(&expr.atom)?;
         if let Some(range) = &expr.range {
             ensure!(expr.op.is_none(), "ranges not supported with operators");
-            ensure!(range.0 >= 0, "range start must be >= 0");
-            ensure!(range.1 >= range.0, "range end must be >= start");
-            Ok(self
-                .builder
-                .regex
-                .repeat(atom, range.0 as u32, Some(range.1 as u32)))
+            ensure!(range.0 >= 0, "range start must be >= 0, got {:?}", range);
+            ensure!(
+                range.1 >= range.0,
+                "range end must be >= start, got {:?}",
+                range
+            );
+            Ok(self.builder.regex.repeat(
+                atom,
+                range.0 as u32,
+                if range.1 == i32::MAX {
+                    None
+                } else {
+                    Some(range.1 as u32)
+                },
+            ))
         } else {
             match &expr.op {
                 Some(op) => match op.0.as_str() {
@@ -317,9 +326,17 @@ impl Compiler {
 
         if let Some((a, b)) = expr.range {
             ensure!(expr.op.is_none(), "ranges not supported with operators");
-            ensure!(a <= b, "range end must be >= start");
-            ensure!(a >= 0, "range start must be >= 0");
-            Ok(self.builder.repeat(atom, a as usize, Some(b as usize)))
+            ensure!(a <= b, "range end must be >= start, got {:?}", (a, b));
+            ensure!(a >= 0, "range start must be >= 0, got {:?}", a);
+            Ok(self.builder.repeat(
+                atom,
+                a as usize,
+                if b == i32::MAX {
+                    None
+                } else {
+                    Some(b as usize)
+                },
+            ))
         } else {
             match &expr.op {
                 Some(op) => match op.0.as_str() {
