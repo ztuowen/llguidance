@@ -797,3 +797,55 @@ fn test_ll_dolphin() {
         check_lark_grammar(g, &["D‧olph‧in‧ name‧:‧ \"", "F‧li‧pper‧\","]);
     }
 }
+
+#[test]
+fn test_two_jsons() {
+    let grm = r#"
+start: "JSON" (obj1 | obj2)
+obj1: %json {
+    "type": "object",
+    "properties": {
+        "a": {},
+        "tp": { "const": 1 }
+    },
+    "required": ["tp"]
+}
+obj2: %json {
+    "type": "object",
+    "properties": {
+        "b": {},
+        "tp": { "const": 2 }
+    },
+    "required": ["tp"]
+}
+"#;
+
+    check_lark_grammar(grm, &["JSON", "{\"‧tp‧\":‧ ‧1‧}"]);
+    // This should pass but doesn't, see https://github.com/guidance-ai/llguidance/issues/113
+    // check_lark_grammar(grm, &["JSON", "{\"‧tp‧\":‧ ‧2‧}"]);
+
+    // workaround
+    let grm = r#"
+    start: "JSON" obj
+    obj: %json {
+        "anyOf": [{
+            "type": "object",
+            "properties": {
+                "a": {},
+                "tp": { "const": 1 }
+            },
+            "required": ["tp"]
+        }, {
+            "type": "object",
+            "properties": {
+                "b": {},
+                "tp": { "const": 2 }
+            },
+            "required": ["tp"]
+        }]
+    }
+    "#;
+
+    check_lark_grammar(grm, &["JSON", "{\"‧tp‧\":‧ ‧1‧}"]);
+    check_lark_grammar(grm, &["JSON", "{\"‧tp‧\":‧ ‧2‧}"]);
+}
