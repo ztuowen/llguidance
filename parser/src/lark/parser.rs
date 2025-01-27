@@ -9,16 +9,21 @@ use toktrie::bytes::limit_str;
 pub struct Parser {
     tokens: Vec<Lexeme>,
     pos: usize,
+    gbnf_mode: Option<bool>,
 }
 
 impl Parser {
     /// Creates a new parser instance.
     pub fn new(tokens: Vec<Lexeme>) -> Self {
-        Parser { tokens, pos: 0 }
+        Parser {
+            tokens,
+            pos: 0,
+            gbnf_mode: None,
+        }
     }
 
     /// Parses the start symbol of the grammar.
-    pub fn parse_start(&mut self) -> Result<Vec<Item>> {
+    pub fn parse_start(&mut self) -> Result<ParsedLark> {
         let mut items = Vec::new();
         while !self.is_at_end() {
             self.consume_newlines();
@@ -28,7 +33,10 @@ impl Parser {
             items.push(self.parse_item()?);
             self.consume_newlines();
         }
-        Ok(items)
+        Ok(ParsedLark {
+            items,
+            gbnf_mode: self.gbnf_mode.unwrap_or(false),
+        })
     }
 
     /// Parses an item (rule, token, or statement).
@@ -94,9 +102,39 @@ impl Parser {
             self.parse_attributes(&mut rule)?;
         }
 
-        self.expect_token(Token::Colon)?;
+        self.expect_colon()?;
         rule.expansions = self.parse_expansions()?;
         Ok(rule)
+    }
+
+    fn expect_colon(&mut self) -> Result<()> {
+        if let Some(gbnf) = self.gbnf_mode {
+            let exp_token = if gbnf {
+                Token::ColonColonEq
+            } else {
+                Token::Colon
+            };
+            let nexp_token = if !gbnf {
+                Token::ColonColonEq
+            } else {
+                Token::Colon
+            };
+            if self.has_token(nexp_token) {
+                bail!("can't mix '::=' and ':'")
+            }
+            self.expect_token(exp_token)?;
+        } else {
+            if self.has_token(Token::ColonColonEq) {
+                self.gbnf_mode = Some(true);
+                self.advance();
+            } else if self.has_token(Token::Colon) {
+                self.gbnf_mode = Some(false);
+                self.advance();
+            } else {
+                bail!("Expected ':' or '::='")
+            }
+        }
+        Ok(())
     }
 
     /// Parses a token definition.
@@ -120,7 +158,7 @@ impl Parser {
             expansions: Expansions(self.location(), Vec::new()),
         };
 
-        self.expect_token(Token::Colon)?;
+        self.expect_colon()?;
         token_def.expansions = self.parse_expansions()?;
         Ok(token_def)
     }
@@ -554,7 +592,12 @@ impl Parser {
     }
 }
 
-pub fn parse_lark(input: &str) -> Result<Vec<Item>> {
+pub struct ParsedLark {
+    pub items: Vec<Item>,
+    pub gbnf_mode: bool,
+}
+
+pub fn parse_lark(input: &str) -> Result<ParsedLark> {
     let tokens = lex_lark(input)?;
     let mut parser = Parser::new(tokens);
     parser.parse_start().map_err(|e| {

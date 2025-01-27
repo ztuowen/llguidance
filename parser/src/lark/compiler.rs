@@ -12,7 +12,12 @@ use crate::{
     GrammarBuilder, JsonCompileOptions, NodeRef,
 };
 
-use super::{ast::*, common::lookup_common_regex, lexer::Location, parser::parse_lark};
+use super::{
+    ast::*,
+    common::lookup_common_regex,
+    lexer::Location,
+    parser::{parse_lark, ParsedLark},
+};
 
 #[derive(Debug)]
 struct Grammar {
@@ -37,19 +42,19 @@ struct Compiler {
     test_rx: derivre::RegexBuilder,
     builder: GrammarBuilder,
     additional_grammars: Vec<GrammarWithLexer>,
-    items: Vec<Item>,
+    parsed: ParsedLark,
     grammar: Arc<Grammar>,
     node_ids: HashMap<String, NodeRef>,
     regex_ids: HashMap<String, RegexId>,
     in_progress: HashSet<String>,
 }
 
-pub fn compile_lark(items: Vec<Item>) -> Result<TopLevelGrammar> {
+fn compile_lark(parsed: ParsedLark) -> Result<TopLevelGrammar> {
     let mut c = Compiler {
         builder: GrammarBuilder::new(),
         test_rx: derivre::RegexBuilder::new(),
         additional_grammars: vec![],
-        items,
+        parsed,
         grammar: Arc::new(Grammar::default()),
         node_ids: HashMap::new(),
         regex_ids: HashMap::new(),
@@ -472,11 +477,20 @@ impl Compiler {
 
     fn execute(&mut self) -> Result<()> {
         let mut grm = Grammar::default();
-        for item in std::mem::take(&mut self.items) {
+        for item in std::mem::take(&mut self.parsed.items) {
             let loc = item.location().clone();
             grm.process_item(item).map_err(|e| loc.augment(e))?;
         }
-        ensure!(grm.rules.contains_key("start"), "no start rule found");
+        let start_name = if self.parsed.gbnf_mode {
+            "root"
+        } else {
+            "start"
+        };
+        ensure!(
+            grm.rules.contains_key(start_name),
+            "no {} rule found",
+            start_name
+        );
         let ignore = std::mem::take(&mut grm.ignore);
         self.grammar = Arc::new(grm);
 
@@ -491,7 +505,7 @@ impl Compiler {
             .iter()
             .map(|exp| self.do_token_expansions(exp))
             .collect::<Result<Vec<_>>>()?;
-        let start = self.do_rule("start")?;
+        let start = self.do_rule(start_name)?;
         self.builder.set_start_node(start);
         if ignore.len() > 0 {
             let ignore_rx = self.builder.regex.select(ignore);

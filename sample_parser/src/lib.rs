@@ -285,6 +285,10 @@ pub fn get_tok_env() -> &'static TokEnv {
     PARSER_FACTORY.tok_env()
 }
 
+pub fn get_parser_factory() -> &'static ParserFactory {
+    &PARSER_FACTORY
+}
+
 pub fn check_lark_grammar_prompt(lark: &str, prompt_str: &str, output: &[&str]) -> Constraint {
     let grm = TopLevelGrammar::from_lark(lark.to_string());
     println!("\nChecking grammar:\n{}\nagainst: {:?}", lark, output);

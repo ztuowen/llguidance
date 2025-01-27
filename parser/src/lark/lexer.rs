@@ -22,6 +22,7 @@ pub enum Token {
     KwJson,
     KwLLGuidance,
     Colon,
+    ColonColonEq,
     Equals,
     Comma,
     Dot,
@@ -81,6 +82,7 @@ impl Token {
     const LITERAL_TOKENS: &'static [(Token, &'static str)] = &[
         (Token::Arrow, "->"),
         (Token::Colon, ":"),
+        (Token::ColonColonEq, "::="),
         (Token::Comma, ","),
         (Token::Dot, "."),
         (Token::DotDot, ".."),
@@ -104,7 +106,7 @@ impl Token {
     const REGEX_TOKENS: &'static [(Token, &'static str)] = &[
         (Token::Op, r"[+*?]"),
         (Token::Rule, r"!?[_?]?[a-z][_a-z0-9\-]*"),
-        (Token::Token, r"_?[A-Z][_A-Z0-9]*"),
+        (Token::Token, r"_?[A-Z][_A-Z0-9\-]*"),
         // use JSON string syntax
         (
             Token::String,

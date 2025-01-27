@@ -46,7 +46,10 @@ Following features of llguidance are currently not exposed in Lark syntax:
 
 Following are introduced for better compatibility with GBNF:
 
-- `expr{M,N}` can be used instead of `expr~M..N`
+- `expr{M,N}` can be used instead of `expr~M..N` (regardless of GBNF-mode)
+- `::=` can be used instead of `:`; this switches the parser to GBNF-compatible mode;
+  you can't mix `::=` and `:` in the same grammar
+- in GBNF mode, `root` is used instead of `start` to define the start rule
 
 ## Examples
 
