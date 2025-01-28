@@ -230,7 +230,7 @@ class GrammarParser:
                         pos, f"Invalid \\U escape sequence: \\U{hex_value}"
                     )
                 pos = pos.advance(9)
-                return f"\\U{hex_value.lstrip("0")}", pos
+                return f"\\U{hex_value.lstrip('0')}", pos
             else:
                 raise ParseError(pos, f"Invalid escape sequence \\{c}")
         elif pos.current() == "":
