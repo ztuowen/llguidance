@@ -42,6 +42,7 @@ if [ "$TEST_RUST" = 1 ] ; then
 
     echo "Running sample_parser"
     (cd sample_parser && ./run.sh >/dev/null)
+    (cd sample_parser && ./lark.sh test)
 
     (cd c_sample && make)
 fi

@@ -11,8 +11,9 @@ case "$1" in
         LARK="$1"
         ;;
     test )
-        ../scripts/gbnf_to_lark.py tmp/grammars/*.gbnf
-        cargo run --bin lark_test -- tmp/grammars/*.lark
+        set -xe
+        ../scripts/gbnf_to_lark.py data/from-llama.cpp/*.gbnf
+        cargo run --bin lark_test -- data/from-llama.cpp/*.lark
         exit $?
         ;;
     *)
