@@ -222,7 +222,7 @@ class GrammarParser:
                         pos, f"Invalid \\u escape sequence: \\u{hex_value}"
                     )
                 pos = pos.advance(5)
-                return f"\\u{hex_value.lstrip("0")}", pos
+                return f"\\u{hex_value.lstrip('0')}", pos
             elif c == "U":
                 hex_value = pos.peek(9)[1:9]
                 if len(hex_value) != 8 or not is_all_hex(hex_value):
@@ -337,7 +337,7 @@ class GrammarParser:
     def _parse_alternatives(
         self, pos: Position, is_nested: bool
     ) -> Tuple[AlternativeNode, Position]:
-        alternatives = []
+        alternatives: list[ASTNode] = []
 
         while True:
             sequence, pos = self._parse_sequence(pos, is_nested)
