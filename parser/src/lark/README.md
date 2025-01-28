@@ -1,9 +1,11 @@
 # Lark-like syntax
 
 LLGuidance supports a variant of syntax used by Python [Lark parsing toolkit](https://github.com/lark-parser/lark).
-Within this Lark-like syntax, there is also some compatibility with [GBNF](https://github.com/ggerganov/llama.cpp/blob/master/grammars/README.md) from [llama.cpp](https://github.com/ggerganov/llama.cpp).
-This makes it easier to get started with a new grammar,
-and provides a familiar syntax, however is not a drop-in replacement for Lark nor GBNF.
+We also provide a [gbnf_to_lark.py script](../../../scripts/gbnf_to_lark.py) to convert from 
+[GBNF](https://github.com/ggerganov/llama.cpp/blob/master/grammars/README.md) format used in
+[llama.cpp](https://github.com/ggerganov/llama.cpp).
+These makes it easier to get started with a new grammar,
+and provide a familiar syntax, however neither is a drop-in replacement for Lark or GBNF.
 
 For a general intro to Lark syntax, see:
 
@@ -19,9 +21,7 @@ Following are the extensions to Lark syntax.
 ### Minor syntax changes
 
 - `expr{M,N}` can be used instead of `expr~M..N`
-  (with either `M` or `N` being optional; `expr{N}` is also supported);
-  this is mostly for [GBNF compatibility](#gbnf-compatibility) but can
-  be used anywhere
+  (with either `M` or `N` being optional; `expr{N}` is also supported)
 - both `//` and `#` can be used for comments
 - `-` is valid in identifiers
 
@@ -150,19 +150,6 @@ Example:
   ]
 }
 ```
-
-### GBNF compatibility
-
-Using `::=` instead of `:` switches the parser to GBNF-compatible mode.
-You can't mix `::=` and `:` in the same grammar.
-In GBNF mode:
-
-- `root` is used instead of `start` to define the start rule
-<!--
-- `[...]` are used for character ranges, not optional rules like in Lark
--->
-
-`expr{M,N}` is [always supported](#minor-syntax-changes).
 
 ### Unsupported Lark features
 

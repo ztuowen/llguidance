@@ -481,11 +481,7 @@ impl Compiler {
             let loc = item.location().clone();
             grm.process_item(item).map_err(|e| loc.augment(e))?;
         }
-        let start_name = if self.parsed.gbnf_mode {
-            "root"
-        } else {
-            "start"
-        };
+        let start_name = "start";
         ensure!(
             grm.rules.contains_key(start_name),
             "no {} rule found",

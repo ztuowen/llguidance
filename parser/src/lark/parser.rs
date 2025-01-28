@@ -9,17 +9,12 @@ use toktrie::bytes::limit_str;
 pub struct Parser {
     tokens: Vec<Lexeme>,
     pos: usize,
-    gbnf_mode: Option<bool>,
 }
 
 impl Parser {
     /// Creates a new parser instance.
     pub fn new(tokens: Vec<Lexeme>) -> Self {
-        Parser {
-            tokens,
-            pos: 0,
-            gbnf_mode: None,
-        }
+        Parser { tokens, pos: 0 }
     }
 
     /// Parses the start symbol of the grammar.
@@ -33,10 +28,7 @@ impl Parser {
             items.push(self.parse_item()?);
             self.consume_newlines();
         }
-        Ok(ParsedLark {
-            items,
-            gbnf_mode: self.gbnf_mode.unwrap_or(false),
-        })
+        Ok(ParsedLark { items })
     }
 
     /// Parses an item (rule, token, or statement).
@@ -108,32 +100,7 @@ impl Parser {
     }
 
     fn expect_colon(&mut self) -> Result<()> {
-        if let Some(gbnf) = self.gbnf_mode {
-            let exp_token = if gbnf {
-                Token::ColonColonEq
-            } else {
-                Token::Colon
-            };
-            let nexp_token = if !gbnf {
-                Token::ColonColonEq
-            } else {
-                Token::Colon
-            };
-            if self.has_token(nexp_token) {
-                bail!("can't mix '::=' and ':'")
-            }
-            self.expect_token(exp_token)?;
-        } else {
-            if self.has_token(Token::ColonColonEq) {
-                self.gbnf_mode = Some(true);
-                self.advance();
-            } else if self.has_token(Token::Colon) {
-                self.gbnf_mode = Some(false);
-                self.advance();
-            } else {
-                bail!("Expected ':' or '::='")
-            }
-        }
+        self.expect_token(Token::Colon)?;
         Ok(())
     }
 
@@ -594,7 +561,6 @@ impl Parser {
 
 pub struct ParsedLark {
     pub items: Vec<Item>,
-    pub gbnf_mode: bool,
 }
 
 pub fn parse_lark(input: &str) -> Result<ParsedLark> {

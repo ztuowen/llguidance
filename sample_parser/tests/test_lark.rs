@@ -103,14 +103,6 @@ fn test_dot_unicode() {
 #[test]
 fn test_lark_syntax() {
     lark_err_test(r#"root: "abc" "def""#, "no start");
-    lark_err_test(r#"start ::= "abc" "def""#, "no root");
-    lark_err_test(
-        r#"
-            root ::= foo "def"
-            foo : "abc"
-        "#,
-        "can't mix",
-    );
 
     lark_err_test(
         r#"
@@ -302,26 +294,26 @@ fn test_lark_syntax() {
 }
 
 #[test]
-fn test_gbnf_compat() {
+fn test_repeat() {
     lark_str_test_many(
-        r#"root ::= ab{3,5}
-           ab ::= "a" | "b"
+        r#"start:  ab{3,5}
+           ab:  "a" | "b"
         "#,
         &["aba", "abaa", "aaaaa", "aabaa"],
         &["aa", "ab", "aaaaaa"],
     );
 
     lark_str_test_many(
-        r#"root ::= ab{3,}
-           ab ::= "a" | "b"
+        r#"start:  ab{3,}
+           ab:  "a" | "b"
         "#,
         &["aba", "abaa", "aaaaa", "aabaa", "aaaaaa"],
         &["aa", "ab"],
     );
 
     lark_str_test_many(
-        r#"root ::= ab{,5}
-           ab ::= "a" | "b"
+        r#"start:  ab{,5}
+           ab:  "a" | "b"
         "#,
         &["", "aa", "b", "aba", "abaa", "aaaaa", "aabaa"],
         &["aaaaaa"],
