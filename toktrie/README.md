@@ -9,7 +9,7 @@ To compute the set of tokens that match a string constraint, one needs go throug
 and apply the constraint.
 An efficient way to do this is walk a prefix tree (trie) of all tokens.
 This library implements this trie and exposes a way of filtering when provided with a constraint
-implementing the [following interface](core/src/toktree.rs):
+implementing the [following interface](./src/toktree.rs#L60)
 
 ```rust
 pub trait Recognizer {

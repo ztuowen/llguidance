@@ -33,6 +33,10 @@ if [ "$TEST_RUST$TEST_MB$TEST_PY" = 000 ] ; then
     TEST_PY=1
 fi
 
+# always check docs, it's quick
+cd "$TOP"
+./scripts/checklinks.sh
+
 if [ "$TEST_RUST" = 1 ] ; then
     cd "$TOP"
     cargo fmt --check
