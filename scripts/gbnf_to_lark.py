@@ -505,6 +505,7 @@ def process_file(fn: str):
     rlist.sort(key=lambda r: r.order)
     fn_lark = os.path.splitext(fn)[0] + ".lark"
     with open(fn_lark, "w") as f:
+        f.write("%llguidance {}\n\n")
         prev_nl = True
         for r in rlist:
             s = str(r)
