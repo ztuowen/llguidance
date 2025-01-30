@@ -37,7 +37,7 @@ pub fn catch_unwind<F: FnOnce() -> Result<R> + UnwindSafe, R>(f: F) -> Result<R>
             if UNWIND_COUNT.with(|count| count.get()) == 0 {
                 return prev(info);
             } else {
-                let trace = Backtrace::capture();
+                let trace = Backtrace::force_capture();
                 BACKTRACE.with(move |b| b.set(Some(trace)));
             }
         }));
