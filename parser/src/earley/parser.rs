@@ -1622,7 +1622,8 @@ impl ParserState {
                         .unwrap();
 
                     let bytes = lexeme.hidden_bytes();
-                    self.captures.push((var_name.clone(), bytes.to_vec()));
+                    let bytes = self.tok_env.tok_trie().decode_raw_to_decode(&bytes);
+                    self.captures.push((var_name.clone(), bytes));
                 }
 
                 if self.scratch.definitive && flags.capture() {
@@ -1648,6 +1649,7 @@ impl ParserState {
                         var_name,
                         String::from_utf8_lossy(&bytes)
                     );
+                    let bytes = self.tok_env.tok_trie().decode_raw_to_decode(&bytes);
                     self.captures.push((var_name.clone(), bytes));
                 }
 

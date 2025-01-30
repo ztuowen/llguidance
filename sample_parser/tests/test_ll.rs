@@ -852,7 +852,7 @@ obj2: %json {
 
 #[test]
 fn test_ll_special_capture() {
-    let _c = check_lark_grammar(
+    let c = check_lark_grammar(
         r#"start: cap | foo
            cap[capture]: <|system|> %json { }
            foo: "foo"
@@ -860,5 +860,5 @@ fn test_ll_special_capture() {
         &["", "<|system|>‧{‧}"],
     );
     // TODO https://github.com/guidance-ai/llgtrt/issues/12
-    // check_capture(&c, "cap", "<|system|>{}");
+    check_capture(&c, "cap", "<|system|>{}");
 }

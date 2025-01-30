@@ -492,11 +492,19 @@ impl TokTrie {
     }
 
     pub fn decode(&self, tokens: &[TokenId]) -> Vec<u8> {
-        let mut bytes = self.decode_raw(tokens);
-        if bytes.contains(&TokTrie::SPECIAL_TOKEN_MARKER) {
-            bytes.retain(|&b| b != TokTrie::SPECIAL_TOKEN_MARKER);
+        let mut res = Vec::new();
+        res.reserve(tokens.len() * 6 + 32); // approximately
+        for &tok in tokens {
+            let t = self.token(tok);
+            if t.len() == 0 {
+                res.extend_from_slice(format!("<[{}]>", tok).as_bytes());
+            } else if t[0] == TokTrie::SPECIAL_TOKEN_MARKER {
+                res.extend_from_slice(&t[1..]);
+            } else {
+                res.extend_from_slice(t);
+            }
         }
-        bytes
+        res
     }
 
     pub fn decode_as_special(&self, tok: TokenId) -> Vec<u8> {
@@ -524,6 +532,26 @@ impl TokTrie {
 
     pub fn decode_str(&self, tokens: &[TokenId]) -> String {
         String::from_utf8_lossy(&self.decode(tokens)).to_string()
+    }
+
+    pub fn decode_raw_to_decode(&self, bytes: &[u8]) -> Vec<u8> {
+        let mut res = Vec::new();
+        let mut idx = 0;
+        while idx < bytes.len() {
+            if bytes[idx] == TokTrie::SPECIAL_TOKEN_MARKER {
+                if let Some((len, tok)) = parse_numeric_token(&bytes[(idx + 1)..]) {
+                    res.extend_from_slice(&self.decode(&[tok]));
+                    idx += len + 1;
+                } else {
+                    res.push(bytes[idx]);
+                    idx += 1;
+                }
+            } else {
+                res.push(bytes[idx]);
+                idx += 1;
+            }
+        }
+        res
     }
 
     pub fn get_special_token(&self, name: &str) -> Option<TokenId> {
