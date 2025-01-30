@@ -122,7 +122,7 @@ fn test_ll_json() {
     // again, off by one
     let c = check_lark_json(
         r#"start: "JSON" j "END"
-               j[max_tokens=3]: @sub
+               j[capture,max_tokens=3]: @sub
             "#,
         json!({
             "type": "array"
@@ -133,7 +133,7 @@ fn test_ll_json() {
 
     let c = check_lark_json(
         r#"start: "JSON" j
-               j[max_tokens=3]: @sub
+               j[capture,max_tokens=3]: @sub
             "#,
         json!({
             "type": "array"
@@ -240,7 +240,7 @@ fn test_ll_subgrammar_max_tokens() {
         let c = check_lark_grammar_nested(
             &format!(
                 r#"start: " x x x" (" q")* " x" ab " y"
-                   ab[max_tokens={}]: @sub
+                   ab[capture,max_tokens={}]: @sub
                 "#,
                 max_tokens,
             ),
@@ -253,7 +253,7 @@ fn test_ll_subgrammar_max_tokens() {
         let c = check_lark_grammar_nested(
             &format!(
                 r#"start: " x x x" (" q")* ab " y"
-                   ab[max_tokens={}]: @sub
+                   ab[capture,max_tokens={}]: @sub
                 "#,
                 max_tokens,
             ),
@@ -266,7 +266,7 @@ fn test_ll_subgrammar_max_tokens() {
     // forced stop of the subgrammar
     let c = check_lark_grammar_nested(
         r#"start: " x x x" (" q")* " x" ab " y"
-           ab[max_tokens=3]: @sub
+           ab[capture,max_tokens=3]: @sub
         "#,
         r#"start: (" a")* " b""#,
         &[" x‧ x‧ x", " q‧ q‧ q‧ q‧ x‧ a‧ a‧ a", " y"],
@@ -275,7 +275,7 @@ fn test_ll_subgrammar_max_tokens() {
     // and with no unique start marker
     let c = check_lark_grammar_nested(
         r#"start: " x x x" (" q")* ab " y"
-           ab[max_tokens=3]: @sub
+           ab[capture,max_tokens=3]: @sub
         "#,
         r#"start: (" a")* " b""#,
         &[" x‧ x‧ x", " q‧ q‧ q‧ q‧ a‧ a‧ a", " y"],
@@ -285,7 +285,7 @@ fn test_ll_subgrammar_max_tokens() {
     // TODO we're off by one here
     let c = check_lark_grammar_nested(
         r#"start: " x x x" ab " y"
-           ab[max_tokens=2]: @sub
+           ab[capture,max_tokens=2]: @sub
         "#,
         r#"start: (" a")* " b""#,
         &[" x‧ x‧ x", " a‧ a‧ a", " y"],
@@ -295,7 +295,7 @@ fn test_ll_subgrammar_max_tokens() {
     // TODO we're off by one here
     let c = check_lark_grammar_nested(
         r#"start: ab " y"
-           ab[max_tokens=2]: @sub
+           ab[capture,max_tokens=2]: @sub
         "#,
         r#"start: (" a")* " b""#,
         &["", " a‧ a‧ a", " y"],
@@ -848,4 +848,17 @@ obj2: %json {
 
     check_lark_grammar(grm, &["JSON", "{\"‧tp‧\":‧ ‧1‧}"]);
     check_lark_grammar(grm, &["JSON", "{\"‧tp‧\":‧ ‧2‧}"]);
+}
+
+#[test]
+fn test_ll_special_capture() {
+    let _c = check_lark_grammar(
+        r#"start: cap | foo
+           cap[capture]: <|system|> %json { }
+           foo: "foo"
+        "#,
+        &["", "<|system|>‧{‧}"],
+    );
+    // TODO https://github.com/guidance-ai/llgtrt/issues/12
+    // check_capture(&c, "cap", "<|system|>{}");
 }

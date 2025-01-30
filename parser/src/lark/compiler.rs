@@ -393,8 +393,7 @@ impl Compiler {
 
         let props = NodeProps {
             max_tokens: rule.max_tokens,
-            // assume the user also wants capture
-            capture_name: Some(name.to_string()),
+            capture_name: rule.capture_name.clone(),
             ..Default::default()
         };
 
@@ -463,6 +462,8 @@ impl Compiler {
                         ..Default::default()
                     },
                 )
+            } else if rule.capture_name.is_some() {
+                self.builder.join_props(&[inner], props)
             } else {
                 inner
             }

@@ -33,6 +33,7 @@ pub struct Rule {
     pub stop: Option<Value>,
     pub max_tokens: Option<usize>,
     pub temperature: Option<f32>,
+    pub capture_name: Option<String>,
 }
 
 /// Represents a token definition.

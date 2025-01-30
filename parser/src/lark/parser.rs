@@ -88,6 +88,7 @@ impl Parser {
             stop: None,
             max_tokens: None,
             temperature: None,
+            capture_name: None,
         };
 
         if self.has_token(Token::LBracket) {
@@ -135,21 +136,28 @@ impl Parser {
         self.expect_token(Token::LBracket)?;
         while !self.has_token(Token::RBracket) {
             let key = self.expect_token(Token::Rule)?.value;
-            self.expect_token(Token::Equals)?;
             match key.as_str() {
-                "stop" => {
-                    let value = self.parse_value()?;
-                    rule.stop = Some(value);
+                "capture" => {
+                    rule.capture_name = Some(rule.name.clone());
                 }
-                "max_tokens" => {
-                    let value = self.expect_token(Token::Number)?.value.parse::<usize>()?;
-                    rule.max_tokens = Some(value);
+                _ => {
+                    self.expect_token(Token::Equals)?;
+                    match key.as_str() {
+                        "stop" => {
+                            let value = self.parse_value()?;
+                            rule.stop = Some(value);
+                        }
+                        "max_tokens" => {
+                            let value = self.expect_token(Token::Number)?.value.parse::<usize>()?;
+                            rule.max_tokens = Some(value);
+                        }
+                        "temperature" => {
+                            let value = self.expect_token(Token::Number)?.value.parse::<f32>()?;
+                            rule.temperature = Some(value);
+                        }
+                        _ => bail!("Unknown attribute: {}", key),
+                    }
                 }
-                "temperature" => {
-                    let value = self.expect_token(Token::Number)?.value.parse::<f32>()?;
-                    rule.temperature = Some(value);
-                }
-                _ => bail!("Unknown attribute: {}", key),
             }
             if self.has_token(Token::Comma) {
                 self.expect_token(Token::Comma)?;
