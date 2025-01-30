@@ -1,7 +1,12 @@
 #!/bin/sh
 
 if [ -z "$1" ]; then
-    DEFAULT_ARGS=$JSB_DATA/unique_tests
+    for folder in ../.. .. ../../tmp ; do
+        if test -d $folder/jsonschemabench/maskbench/data; then
+            DEFAULT_ARGS=$folder/jsonschemabench/maskbench/data/
+            break
+        fi
+    done
 else
     DEFAULT_ARGS=
 fi

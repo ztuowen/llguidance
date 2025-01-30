@@ -1,4 +1,4 @@
-# What makes llg go fast?
+# What makes LLGuidance go fast?
 
 The main operation when computing a token mask is walking the [tokenizer trie](./toktrie.md).
 The trie is laid flat in memory, and just walking it is highly optimized,
@@ -173,4 +173,23 @@ Similarly, if the lexer allows `C{0,50}"` (because there is a `"string"`
 with `"maxLength": 50` in the schema), the JSON slice `[^"\\\x00-\x1F\x7F]{1,30}` is contained in this lexeme.
 OTOH, if the lexer allows `C{0,20}"`, than the JSON slice is not contained in this lexeme.
 
-This optimization make the mask computation about 10x faster for JSON schemas.
+This optimization make the mask computation about 10x faster in [MaskBench](https://github.com/guidance-ai/jsonschemabench/tree/main/maskbench).
+
+The reason the optimization works, is that masks tend be either small or sliceable.
+Here are statistics of various kinds of masks, across around 2M masks in MaskBench,
+categorized based on how "full" the mask is and whether the slicer optimization was applied.
+
+| Category            |  % Masks |    % Time | Time/Mask [us] |
+|---------------------|---------:|----------:|---------------:|
+| 0%-2% & !sliced     |    44.6% |     20.7% |             28 |
+| 2%-85% & !sliced    |     1.1% |     11.0% |            576 |
+| 85%+ & !sliced      |     0.5% |     13.0% |           1577 |
+| 85%+ & sliced       |    53.8% |     55.0% |             61 |
+| **Total**           |   100.0% |    100.0% |             60 |
+
+![Plot of the table above](mask_plot.png)
+
+A little under half of masks are very small (up to 2% of the tokens are allowed),
+and in a little over half the slicer optimization can be applied
+(there are no masks under 85% full where the slicer can be applied).
+The remaining sliver of masks are either intermediate size or large, but the slicer optimization can't be applied; they take disproportionately long time to compute.

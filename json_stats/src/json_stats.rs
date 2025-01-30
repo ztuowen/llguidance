@@ -355,7 +355,7 @@ impl TestEnv {
         }
 
         let m = parser.compute_mask()?; // .unwrap_or_else(|_| trie.alloc_token_set());
-        let us = t0.elapsed().as_micros() as usize;
+        let mask_us = t0.elapsed().as_micros() as usize;
         let pstats = parser.last_step_stats();
 
         if let Some(ref_parser) = &mut ref_parser {
@@ -375,10 +375,10 @@ impl TestEnv {
             }
         }
 
-        stats.all_mask_us.push(us);
+        stats.all_mask_us.push(mask_us);
 
         // && pstats.lexer_cost < 7 * us as u64
-        if self.cli.csv && us > 1000 {
+        if self.cli.csv && mask_us > 1000 {
             static CSV_LINE: AtomicUsize = AtomicUsize::new(0);
             let line_no = CSV_LINE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             if line_no == 0 {
@@ -386,8 +386,8 @@ impl TestEnv {
             }
             println!(
                 "{},{},{},{},{},{},{},{},{},{}",
-                if us > 1000 { "SLOW" } else { "OK" },
-                us,
+                if mask_us > 1000 { "SLOW" } else { "OK" },
+                mask_us,
                 pstats.lexer_cost,
                 pstats.slices_applied,
                 pstats.all_items,
@@ -408,14 +408,14 @@ impl TestEnv {
         stats.lexer_cost += pstats.lexer_cost;
         stats.trie_nodes_walked += pstats.trie_nodes_walked;
 
-        let is_big = m.num_set() >= 120_000;
+        let is_big = m.num_set() >= 128_000 / 100 * 85;
         let sliced = pstats.slices_applied > 0;
-        let cond_a = is_big && sliced;
+        let cond_a = is_big && !sliced;
         if cond_a {
-            stats.all_mask_us_a.push(us);
+            stats.all_mask_us_a.push(mask_us);
         }
 
-        stats.max_mask_us = std::cmp::max(stats.max_mask_us, us);
+        stats.max_mask_us = std::cmp::max(stats.max_mask_us, mask_us);
         if m.is_allowed(token) {
             Ok(MaskResult::Accept { n_tokens: 1 })
         } else {
