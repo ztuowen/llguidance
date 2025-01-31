@@ -125,11 +125,10 @@ The slices are defined by regular expressions typically of the form `[...]{1,N}`
 
 For example, a good set of slices for JSON schemas is 
 
-```regex
-[^"\\\x00-\x1F\x7F]{1,10}
-[^"\\\x00-\x1F\x7F]{1,30}
-[^"\\\x00-\x1F\x7F]+
-```
+- `[^"\\\x00-\x1F\x7F]{1,10}` (`turtle`, ` turtle`, `)!;`, `żółw`, `🐢`, etc.)
+- `[^"\\\x00-\x1F\x7F]{1,30}` (`/////////////////`, ...)
+- `[^"\\\x00-\x1F\x7F]+` (`-------------------------------------`, ...)
+- everything else (`"`, `":`, `\`, `\u00`, partial UTF-8, newline, etc.); this one is implicit
 
 They all exclude `"`, `\`, and ASCII control characters, all of which have to
 be escaped in JSON strings.
@@ -169,9 +168,11 @@ the lexer will allow `foo"`, `bar"` and `C*"`.
 Now, the JSON slice is contained in `C*"`,
 and thus we can skip walking the trie for the slice.
 
-Similarly, if the lexer allows `C{0,50}"` (because there is a `"string"`
-with `"maxLength": 50` in the schema), the JSON slice `[^"\\\x00-\x1F\x7F]{1,30}` is contained in this lexeme.
-OTOH, if the lexer allows `C{0,20}"`, than the JSON slice is not contained in this lexeme.
+Another example:
+- assume schemas has `{ "type": "string", "maxLength": 20 }`
+- so after initial quote, the lexer allows `C{0,20}"`
+- the JSON slice `[^"\\\x00-\x1F\x7F]{1,10}` is contained in this lexeme,
+  while `[^"\\\x00-\x1F\x7F]{11,30}` is not
 
 This optimization make the mask computation about 10x faster in [MaskBench](https://github.com/guidance-ai/jsonschemabench/tree/main/maskbench).
 
@@ -193,3 +194,44 @@ A little under half of masks are very small (up to 2% of the tokens are allowed)
 and in a little over half the slicer optimization can be applied
 (there are no masks under 85% full where the slicer can be applied).
 The remaining sliver of masks are either intermediate size or large, but the slicer optimization can't be applied; they take disproportionately long time to compute.
+
+### Checking regex containment
+
+This is an under-approximation of the containment problem,
+that is it may return false when the containment is actually true.
+If any of the "checks" fail, we return false.
+
+Prefixes of language `R`, are defined as `P(R) = { w | ∃q. wq ∈ R }`.
+
+We need to check if regex `S` (slice) is contained in prefix of regex `L` (lexeme): `S ⊆ P(L)`.
+
+We check if `L` is of the form `(X{m,n} & ~E) T`, where 
+`E` is of the form `E0 | E1 | ... | Ek`,
+and both `E` can be `∅` (empty-set/no match) and `T` can be `ε` (empty string).
+
+Observe that `P(R) ⊆ P(RT)`, ie. making regex longer doesn't remove any prefixes (provided `T ≠ ∅`).
+Thus, we'll be checking containment in `P(X{m,n} & ~E)`.
+
+We (over)estimate maximum length of `E`, let `o >= max { |w| | w ∈ E }`.
+We check that `n > o`, and that `∃v ≠ ε. v ∈ X`.
+In other words, we check that for anything matching `Ei` and `X{m,n}` there is a proper extension of that string in `X{m,n}`.
+
+Now, we prove that `P(X{m,n} & ~E) = P(X{m,n})`.
+
+Consider `w ∈ P(X{m,n})`. We have `wq ∈ X{m,n}` for some `q`.
+If `|wq| > o`, then `wq ∉ E`, and thus `wq ∈ X{m,n} & ~E`.
+Otherwise, `wq ∈ X{p}` for some `p <= o < n`,
+and thus `wqv...v ∈ X{n}` for `n-p` repetitions of `v`.
+We also have `|wqv...v| > o`, and thus `wqv...v ∉ E`,
+and thus `wqv...v ∈ X{m,n} & ~E`,
+and thus `w ∈ P(X{m,n} & ~E)`.
+The other direction is trivial.
+
+Now, we just need to check if `S ⊆ P(X{m,n})`.
+
+First, we check if `S` is of the form `Y{m',n'}`.
+Then, we check if `Y` is contained in `X` (this is a cached check using symbolic derivatives; it's typically simple).
+Finally, we check if `n' <= n`.
+Note that we don't care about `m` and `m'`, as we're checking for prefixes.
+
+Also note that the upper-bound in the above calculations can be infinity.
