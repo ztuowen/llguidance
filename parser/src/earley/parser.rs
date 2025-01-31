@@ -1175,17 +1175,19 @@ impl ParserState {
                     assert!(!s.has_pending_lexeme_bytes());
                     let specs = s.token_range_lexemes();
                     let mut unique_token_id = None;
-                    for s in specs {
-                        if s.token_ranges.len() == 1 {
-                            let range = &s.token_ranges[0];
+                    'spec: for s in specs {
+                        for range in &s.token_ranges {
                             if range.start() == range.end() {
                                 let t = *range.start();
                                 if unique_token_id.is_none() || unique_token_id == Some(t) {
                                     unique_token_id = Some(t);
                                 } else {
                                     unique_token_id = None;
-                                    break;
+                                    break 'spec;
                                 }
+                            } else {
+                                unique_token_id = None;
+                                break 'spec;
                             }
                         }
                     }
@@ -1241,16 +1243,19 @@ impl ParserState {
         let possible = self.lexer().possible_lexemes(state);
         let specs = self.lexer_spec().token_range_lexemes(possible);
         let bytes = self.curr_row_bytes();
-        let bytes = &bytes[1..bytes.len() - 1];
+        debug!("special_pre_lexeme: {:?}", String::from_utf8_lossy(&bytes));
+        // we get here "FF [ 1 2 3 4", no final ']'
+        let bytes = &bytes[2..bytes.len()];
         if let Ok(tok_id) = u32::from_str_radix(std::str::from_utf8(bytes).unwrap(), 10) {
             let idx = specs.iter().position(|spec| {
                 spec.token_ranges
                     .iter()
                     .any(|range| range.contains(&tok_id))
             });
+            debug!("  >> tok_id={} idx={:?}", tok_id, idx);
             if let Some(idx) = idx {
                 let pre = PreLexeme {
-                    idx: LexemeIdx::new(idx),
+                    idx: specs[idx].idx,
                     byte: Some(b']'),
                     byte_next_row: false,
                     hidden_len: 0,
@@ -1260,7 +1265,7 @@ impl ParserState {
                 false
             }
         } else {
-            // should never happen?
+            debug!("  >> not a number; should never happen?");
             false
         }
     }

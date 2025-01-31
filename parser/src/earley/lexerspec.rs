@@ -95,6 +95,7 @@ impl LexemeSpec {
         if self.token_ranges.len() > 0 {
             write!(f, " tokens={}", token_ranges_to_string(&self.token_ranges)).unwrap();
         }
+        // write!(f, " compiled={:?}", self.compiled_rx).unwrap();
         f
     }
 

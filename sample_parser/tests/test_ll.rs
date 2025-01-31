@@ -740,6 +740,56 @@ obj: %json{
 
 #[test]
 fn test_ll_numeric_token_for_text() {
+    // 5431 foo
+    // 5432 _calling
+    // 5426 long
+    // 5427 asta
+    // 32006 <|system|>
+
+    check_lark_grammar(
+        r#"start: <[5431]>* <[34001]> <[34100-34110]>*
+        "#,
+        &["", "<[5431]>‧<[34001]>‧<[34100]>‧<[34101]>‧≺EOS≻"],
+    );
+
+    check_lark_grammar(
+        r#"start: <[5431]>* <[5432]> <[5426-5427]>*
+        "#,
+        &["", "✖<|assistant|>✖f✖long‧foo‧ calling‧long‧asta‧≺EOS≻"],
+    );
+
+    check_lark_grammar(
+        r#"start: <[5431]>* <[5432]> <[5426-5427]>*
+        "#,
+        &[
+            "",
+            "✖<|assistant|>✖f✖l‧<[5431]>‧<[5432]>‧<[5426]>‧<[5427]>‧<[5426]>‧≺EOS≻",
+        ],
+    );
+
+    check_lark_grammar(
+        r#"start: foo | bar
+           foo: <[5431-5432]> /.*/
+           bar: <[32006]> /.*/
+        "#,
+        &["", "✖<|assistant|>✖f‧foo‧bar‧long‧≺EOS≻"],
+    );
+
+    check_lark_grammar(
+        r#"start: foo | bar
+           foo: <[5431-5432,9000-9010]> /.*/
+           bar: <[32006]> /.*/
+        "#,
+        &["", "✖<|assistant|>✖f‧foo‧bar‧long‧≺EOS≻"],
+    );
+
+    check_lark_grammar(
+        r#"start: foo
+           foo: <[32006,9000-9010]> /.*/
+        "#,
+        &["", "✖<|assistant|>✖f‧reh‧bar‧long‧≺EOS≻"],
+    );
+
     check_lark_grammar(
         r#"start: foo | bar
            foo: <[5431]> <[5426-5427]> /.*/

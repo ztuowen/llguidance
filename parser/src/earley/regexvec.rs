@@ -496,8 +496,14 @@ impl RegexVec {
         special_token_rx: Option<ExprRef>,
         limits: &mut ParserLimits,
     ) -> Result<Self> {
+        let spec_pos = if let Some(rx) = special_token_rx {
+            rx_list.iter().position(|&r| r == rx)
+        } else {
+            None
+        };
         let (alpha, mut exprset, mut rx_list) = AlphabetInfo::from_exprset(exprset, rx_list);
         let num_ast_nodes = exprset.len();
+        let special_token_rx = spec_pos.map(|pos| rx_list[pos]);
 
         let fuel0 = limits.initial_lexer_fuel;
         let mut relevance = RelevanceCache::new();

@@ -246,6 +246,10 @@ fn tokenize_trace(tok_env: &TokEnv, s: &str) -> Vec<(bool, TokenId)> {
             result.push((is_allowed, trie.eos_token()));
         } else if let Some(t) = trie.get_special_token(word) {
             result.push((is_allowed, t));
+        } else if word.starts_with("<[") && word.ends_with("]>") {
+            let t = u32::from_str_radix(&word[2..word.len() - 2], 10).unwrap();
+            assert!(t < trie.vocab_size() as u32);
+            result.push((is_allowed, t));
         } else {
             let tt = trie.greedy_tokenize(word.as_bytes());
             assert!(
@@ -265,7 +269,7 @@ fn tokenize_trace(tok_env: &TokEnv, s: &str) -> Vec<(bool, TokenId)> {
 
 lazy_static! {
     static ref PARSER_FACTORY: ParserFactory = {
-        let env = toktrie_hf_tokenizers::ByteTokenizerEnv::from_name("microsoft/Phi-3.5-mini-instruct", None)
+        let env = toktrie_hf_tokenizers::ByteTokenizerEnv::from_name("microsoft/Phi-3.5-mini-instruct", Some(35000))
             .unwrap()
             .to_env();
         let mut fact = ParserFactory::new(&env,
