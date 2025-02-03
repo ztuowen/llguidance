@@ -31,14 +31,14 @@ The library can be used from:
 - [Python](./python/llguidance/_lib.pyi)
 
 The library is currently integrated in:
-- [Guidance](https://github.com/guidance-ai/guidance) - library for interacting with LLMs;
-  uses either llama.cpp or HF Tranformers
+- [Guidance](https://github.com/guidance-ai/guidance) - library for interacting with LLMs
+- [llama.cpp](https://github.com/ggerganov/llama.cpp/pull/10224) - 
+  available via `-DLLAMA_LLGUIDANCE=ON` option for `cmake`;
+  llama.cpp can be also used Guidance Python package
 - [LLGTRT](https://github.com/guidance-ai/llgtrt) - OpenAI-compatible REST server using NVIDIA's [TensorRT-LLM](https://github.com/NVIDIA/TensorRT-LLM)
 - [mistral.rs](https://github.com/EricLBuehler/mistral.rs/pull/899)
 
 The integration is ongoing in:
-- llama.cpp - [ongoing PR](https://github.com/ggerganov/llama.cpp/pull/10224);
-  note that llama.cpp is fully integrated in Guidance via Python bindings
 - onnxruntime-genai - [draft PR](https://github.com/microsoft/onnxruntime-genai/pull/1038)
 
 ## Technical details
