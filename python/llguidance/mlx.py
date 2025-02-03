@@ -20,7 +20,7 @@ def apply_token_bitmask_kernel(data: mx.array, mask: mx.array) -> mx.array:
         // Bounds check for mask access
         // assert(word_idx < mask_shape[1] && batch < mask_shape[0]);
 
-        uint bit = (mask[batch * mask_shape[1] + word_idx] >> bit_idx) & 1;
+        uint bit = word_idx < mask_shape[1] && (mask[batch * mask_shape[1] + word_idx] >> bit_idx) & 1;
         out[batch * inp_shape[1] + elem] = bit ? inp[batch * inp_shape[1] + elem] : neg_inf[0];
     """
 
@@ -34,7 +34,7 @@ def apply_token_bitmask_kernel(data: mx.array, mask: mx.array) -> mx.array:
     # Create neg_inf as a tensor
     neg_inf = mx.array([-float("inf")], dtype=data.dtype)
 
-    outputs: List[mx.array] = kernel(
+    outputs = kernel(
         inputs=[data, mask, neg_inf],
         template=[("T", data.dtype)],  # Generic dtype support
         grid=(data.shape[1], data.shape[0], 1),  # Process all elements across batches
@@ -55,5 +55,7 @@ def apply_token_bitmask(logits: mx.array, mask_np: np.ndarray) -> mx.array:
     assert mask.dtype == mx.int32, "Mask must be int32"
     assert len(logits.shape) == 2, "Logits must be 2D"
     batch, vocab = logits.shape
-    assert mask.shape == get_bitmask_shape(batch, vocab), "Mask shape mismatch"
-    return apply_token_bitmask_kernel(logits, mask)
+    m_batch, m_vocab = mask.shape
+    assert batch == m_batch, "Batch size mismatch"
+    r = apply_token_bitmask_kernel(logits, mask)
+    return r  # type: ignore

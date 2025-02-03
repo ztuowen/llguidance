@@ -35,7 +35,12 @@ def apply_token_bitmask_inplace(logits: torch.Tensor, mask: torch.Tensor) -> Non
     assert mask.dtype == torch.int32, "Mask must be int32"
     assert logits.dim() == 2, "Logits must be 2D"
     batch, vocab = logits.shape
-    assert mask.shape == get_bitmask_shape(batch, vocab), "Mask shape mismatch"
+    m_batch, m_vocab = mask.shape
+    assert batch == m_batch, "Batch size mismatch"
+    cutoff = 32 * m_vocab
+    if vocab > cutoff:
+        logits[:, cutoff:] = float("-inf")
+        logits = logits[:, :cutoff]
     apply_token_bitmask_inplace_kernel(logits, mask)
 
 
