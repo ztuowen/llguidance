@@ -64,6 +64,11 @@ class LLTokenizer:
         Decode the tokens into a bytes object.
         """
 
+    def is_special_token(self, token: int) -> bool:
+        """
+        Check if the token is a special token.
+        """
+
 class LLInterpreter:
     def __new__(
         cls,
@@ -135,6 +140,12 @@ class LLInterpreter:
         """
 
     def compute_mask_into(self, trg: bytearray) -> str:
+        """
+        Perform next parsing step.
+        Returns: a JSON string.
+        """
+
+    def unsafe_compute_mask_ptr(self, trg_pointer: int, trg_byte_size: int) -> str:
         """
         Perform next parsing step.
         Returns: a JSON string.
