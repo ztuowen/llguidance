@@ -1,7 +1,7 @@
 # Syntax of LLGuidance Grammars
 
 LLGuidance supports a variant of syntax used by Python [Lark parsing toolkit](https://github.com/lark-parser/lark).
-We also provide a [gbnf_to_lark.py script](../scripts/gbnf_to_lark.py) to convert from 
+We also provide a [gbnf_to_lark.py script](../scripts/gbnf_to_lark.py) to convert from
 [GBNF](https://github.com/ggerganov/llama.cpp/blob/master/grammars/README.md) format used in
 [llama.cpp](https://github.com/ggerganov/llama.cpp).
 These makes it easier to get started with a new grammar,
@@ -163,7 +163,12 @@ Following features of Lark syntax are currently not supported:
 - regexes use Rust `regex` crate [syntax](https://docs.rs/regex/latest/regex/#syntax), not Python's `re` (though they are similar)
 - certain string syntax, see [issue](https://github.com/microsoft/llguidance/issues/54)
 
-## Terminals vs rules
+## Performance tips
+
+### Terminals vs rules
+
+TL;DR: avoid regexes matching only single characters like `/[a-z]/`,
+use `/[a-z]+/` or similar instead where appropriate.
 
 A Lark file defines a context-free grammar (CFG).
 Another, more well-known, type of grammar is a regular grammar, which is used by regular expressions.
@@ -214,3 +219,38 @@ ID_START: /[a-zA-Z_]/
 ID_CHAR: /[a-zA-Z0-9_]/
 IDENTIFIER: ID_START ID_CHAR*
 ```
+
+### Recursive rules
+
+TL;DR: prefer `many: one+` (or `one*`) over `many: many one | one`. Do not use `many: one many | one`.
+
+CFGs allow for recursive rules, for example they are very convenient for defining arithmetic expressions:
+
+```lark
+expr: expr "+" term | term
+term: term "*" factor | factor
+factor: "(" expr ")" | NUMBER
+NUMBER: /[0-9]+/
+```
+
+However, often recursion is only used to express repetition:
+
+```lark
+one: ...
+many: many one | one
+```
+
+The rule `many: many one` is called left-recursive, because it refers to itself on the left side.
+A rule like `many: one many` is right-recursive.
+In this case, they would both express the same language.
+Earley parser used by LLGuidance can handle both, but left-recursive rules are **much more efficient**
+(it's often the opposite for other parsing methods).
+
+To avoid having to think about it, you can just use `many: one+`.
+This will be translated internally to the most efficient form, is easier to get right and arguably more readable.
+
+With right-recursive rules you will hit parser item limits quite quickly (after 100-1000 repetitions) and before you do, the parser will be slower than necessary.
+
+On related note, use `one{N}` and not `one one ... one`.
+The resulting rules will be `O(log N)` in size, while the unfolded version would be `O(N)`.
+Same for `one{M,N}`.
