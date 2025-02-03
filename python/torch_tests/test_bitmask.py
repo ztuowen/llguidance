@@ -2,7 +2,14 @@ import torch
 import numpy as np
 import pytest
 
-from llguidance.torch import apply_token_bitmask_inplace, get_bitmask_shape
+from llguidance.numpy import get_bitmask_shape
+import llguidance.numpy
+import llguidance.torch
+
+try:
+    import llguidance.mlx as ll_mlx
+except ImportError:
+    ll_mlx = None
 
 has_cuda = torch.cuda.is_available()
 dev = "cuda" if has_cuda else "cpu"
@@ -40,21 +47,59 @@ def gen_mask_test_data(batch: int, vocab: int) -> tuple[torch.Tensor, torch.Tens
     return data, mask
 
 
+def gen_mask_test_data_np(batch: int, vocab: int) -> tuple[np.ndarray, np.ndarray]:
+    data = np.random.rand(batch, vocab).astype(np.float32)
+    mask = np.random.randint(0, 2**32, get_bitmask_shape(batch, vocab), dtype=np.uint32)
+    mask = mask.astype(np.int32)
+    return data, mask
+
+
+def validate_mask_data(data_np: np.ndarray, mask_np: np.ndarray, md_np: np.ndarray):
+    bool_mask = u32_to_bool(mask_np)[:, : data_np.shape[1]]
+    assert np.all(md_np[bool_mask == 0] == -np.inf)
+    assert np.all(md_np[bool_mask == 1] == data_np[bool_mask == 1])
+
+
 @pytest.mark.parametrize("batch", [1, 3, 10])
 @pytest.mark.parametrize("vocab", list(range(32000, 32033)) + [128000])
-def test_mask_data(batch: int, vocab: int):
+def test_mask_data_torch(batch: int, vocab: int):
     data, mask = gen_mask_test_data(batch, vocab)
 
     masked_data = data.clone()
-    apply_token_bitmask_inplace(masked_data, mask.to(dtype=torch.int32))
+    llguidance.torch.apply_token_bitmask_inplace(masked_data, mask)
 
-    data_np = data.cpu().numpy()
-    mask_np = mask.cpu().numpy()
-    md_np = masked_data.cpu().numpy()
+    validate_mask_data(
+        data.cpu().numpy(), mask.cpu().numpy(), masked_data.cpu().numpy()
+    )
 
-    bool_mask = u32_to_bool(mask_np)[:, :vocab]
-    assert np.all(md_np[bool_mask == 0] == -np.inf)
-    assert np.all(md_np[bool_mask == 1] == data_np[bool_mask == 1])
+
+@pytest.mark.parametrize("batch", [1, 3, 10])
+@pytest.mark.parametrize("vocab", list(range(32000, 32033)) + [128000])
+def test_mask_data_numpy(batch: int, vocab: int):
+    data, mask = gen_mask_test_data_np(batch, vocab)
+
+    masked_data = data.copy()
+    llguidance.numpy.apply_token_bitmask_inplace(masked_data, mask)
+
+    validate_mask_data(data, mask, masked_data)
+
+
+@pytest.mark.parametrize("batch", [1, 3, 10])
+@pytest.mark.parametrize("vocab", list(range(32000, 32033)) + [128000])
+def test_mask_data_mlx(batch: int, vocab: int):
+    if not ll_mlx:
+        pytest.skip("mlx is not available")
+
+    import mlx.core as mx
+
+    data_np, mask = gen_mask_test_data_np(batch, vocab)
+    data = mx.array(data_np)
+
+    masked_data = ll_mlx.apply_token_bitmask(data, mask)
+    print(masked_data)
+    print(np.array(masked_data))
+
+    validate_mask_data(data_np, mask, np.array(masked_data))
 
 
 def test_mask_data_perf():
@@ -65,7 +110,9 @@ def test_mask_data_perf():
         data, mask = gen_mask_test_data(batch, 128000)
         for _ in range(10):
             masked_data = data.clone()
-            t = measure_gpu_time(apply_token_bitmask_inplace, masked_data, mask)
+            t = measure_gpu_time(
+                llguidance.torch.apply_token_bitmask_inplace, masked_data, mask
+            )
             times.append(round(t * 1000))
     print(times)
 
