@@ -27,7 +27,7 @@ def apply_token_bitmask_inplace_kernel(logits: torch.Tensor, mask: torch.Tensor)
     logits.masked_fill_(bit_masks == 0, float("-inf"))  # Apply mask
 
 
-def apply_token_bitmask_inplace(logits: torch.Tensor, mask: torch.Tensor):
+def apply_token_bitmask_inplace(logits: torch.Tensor, mask: torch.Tensor) -> None:
     if logits.dim() == 1:
         logits = logits.unsqueeze(0)
     if mask.dim() == 1:
@@ -38,12 +38,13 @@ def apply_token_bitmask_inplace(logits: torch.Tensor, mask: torch.Tensor):
     assert mask.shape == get_bitmask_shape(batch, vocab), "Mask shape mismatch"
     apply_token_bitmask_inplace_kernel(logits, mask)
 
+
 def fill_next_token_bitmask(
     interp: LLInterpreter, bitmask: torch.Tensor, index: int = 0
-):
+) -> str:
     assert bitmask.dtype == torch.int32, "Mask must be int32"
     assert bitmask.is_cpu, "Mask must be on CPU"
     assert bitmask.dim() == 2, "Mask must be 2D"
     v = bitmask[index, :]
     assert bitmask.is_contiguous(), "Mask must be contiguous"
-    interp.unsafe_compute_mask_ptr(v.data_ptr(), v.numel() * v.element_size())
+    return interp.unsafe_compute_mask_ptr(v.data_ptr(), v.numel() * v.element_size())

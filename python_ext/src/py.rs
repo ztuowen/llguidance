@@ -127,10 +127,18 @@ impl LLInterpreter {
             trg_slice.copy_from_slice(&src[0..trg_slice.len()]);
         } else {
             trg_slice.fill(0);
-        };
+            let trie = self.inner.tok_trie();
+            let eos = trie.eos_token();
+            let eos_ok = (eos as usize) < trie.vocab_size();
+            if eos_ok {
+                trg_slice[eos as usize / 32] |= 1 << (eos % 32);
+            }
+        }
+
         Ok(self.json_py_result())
     }
 
+    // TODO: remove this
     fn compute_mask_into(&mut self, trg: &Bound<'_, PyByteArray>) -> PyResult<String> {
         let r = self.inner.compute_mask().map_err(val_error)?;
         let trg_slice = unsafe { trg.as_bytes_mut() };
@@ -205,7 +213,12 @@ impl LLTokenizer {
                 let val = serde_json::from_str(&tokenizer_str).map_err(val_error)?;
                 let tokens = token_bytes_from_tokenizer_json(&val).map_err(val_error)?;
                 let trie = TokTrie::from(&TokRxInfo::new(tokens.len() as u32, 0), &tokens);
-                let candidates = &["<|end_of_text|>", "</s>", "<|endoftext|>"];
+                let candidates = &[
+                    "<|end_of_text|>",
+                    "<｜end▁of▁sentence｜>", // deepseek-v3 - weird Unicode bars
+                    "</s>",
+                    "<|endoftext|>",
+                ];
                 let eos_token = candidates
                     .iter()
                     .filter_map(|s| trie.get_special_token(s))
