@@ -4,12 +4,9 @@
 # https://github.com/guidance-ai/llguidance/blob/main/python/llguidance/gbnf_to_lark.py
 
 import os
+import subprocess
 import sys
 
-sys.path.insert(
-    0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../python"))
-)
-
-from llguidance.gbnf_to_lark import main
-
-main()
+p = os.path.join(os.path.dirname(__file__), "../python/llguidance/gbnf_to_lark.py")
+r = subprocess.run(["python3", p] + sys.argv[1:], stdout=sys.stdout, stderr=sys.stderr)
+sys.exit(r.returncode)
