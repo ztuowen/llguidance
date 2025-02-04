@@ -221,3 +221,26 @@ class RegexCompiler:
         """
         Compile the JSON representation of the AG2 grammar/constraint.
         """
+
+class LLExecutor:
+    def __new__(
+        cls,
+        num_threads: Optional[int] = None,
+    ) -> "LLExecutor":
+        """
+        Create a new executor.
+        Args:
+            num_threads: int - number of threads to use for parallel execution,
+                or None to use the default number of threads (80% of the available CPUs up to 32)
+        """
+
+    def unsafe_compute_mask_ptr(
+        self,
+        interpreters: List[LLInterpreter],
+        trg_pointer: int,
+        one_mask_byte_size: int,
+    ) -> str:
+        """
+        Perform next parsing step.
+        Returns: a JSON string.
+        """
