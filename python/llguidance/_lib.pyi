@@ -10,6 +10,7 @@ class LLTokenizer:
         cls,
         tokenizer: Union[str, TokenizerWrapper],
         n_vocab: Optional[int] = None,
+        eos_token: Optional[TokenId] = None,
         slices: Optional[List[str]] = None,
     ) -> "LLTokenizer":
         """

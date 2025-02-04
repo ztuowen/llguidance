@@ -206,6 +206,7 @@ impl LLTokenizer {
     fn py_new(
         tokenizer: Bound<'_, PyAny>,
         n_vocab: Option<usize>,
+        eos_token: Option<u32>,
         slices: Option<Vec<String>>,
     ) -> PyResult<Self> {
         let tok_env: TokEnv = if let Some(tokenizer_str) = tokenizer.extract::<String>().ok() {
@@ -224,15 +225,19 @@ impl LLTokenizer {
                     "</s>",
                     "<|endoftext|>",
                 ];
-                let eos_token = candidates
-                    .iter()
-                    .filter_map(|s| trie.get_special_token(s))
-                    .next()
-                    .ok_or_else(|| {
-                        PyValueError::new_err(format!(
-                            "Expecting a tokenizer with an EOS token, but none was found"
-                        ))
-                    })?;
+                let eos_token = if let Some(eos_token) = eos_token {
+                    eos_token
+                } else {
+                    candidates
+                        .iter()
+                        .filter_map(|s| trie.get_special_token(s))
+                        .next()
+                        .ok_or_else(|| {
+                            PyValueError::new_err(format!(
+                                "Expecting a tokenizer with an EOS token, but none was found"
+                            ))
+                        })?
+                };
                 let trie = trie.with_eos_token(eos_token);
                 Arc::new(ApproximateTokEnv::new(trie))
             } else {
