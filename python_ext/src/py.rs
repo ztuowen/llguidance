@@ -220,6 +220,8 @@ impl LLTokenizer {
                 }
                 let trie = TokTrie::from(&TokRxInfo::new(tokens.len() as u32, 0), &tokens);
                 let candidates = &[
+                    "<|im_end|>",
+                    "<|eot_id|>",
                     "<|end_of_text|>",
                     "<｜end▁of▁sentence｜>", // deepseek-v3 - weird Unicode bars
                     "</s>",
