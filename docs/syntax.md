@@ -121,7 +121,8 @@ alternation (`/a|b/`), and grouping (`/(ab)+/`).
 Additionally, regexes can be defined with the standard Lark syntax, using [upper-case names](#terminals-vs-rules):
 
 ```lark
-INT: "-"? UINT # equivalent to /(-)?[0-9]+/
+// INT is equivalent to /(-)?[0-9]+/
+INT: "-"? UINT 
 UINT: DIGIT+
 DIGIT: /[0-9]/
 ```
@@ -129,6 +130,8 @@ DIGIT: /[0-9]/
 Additionally, extended regex nodes can be defined using `%regex { ... }` syntax.
 
 #### Substring
+
+**The syntax is not stable yet!**
 
 `%regex { "substring_chunks": lst }` will match `lst[n:m].join("")` for some `n <= m <= len(lst)`.
 Additionally `substring_words` or `substring_chars` can be specified.
@@ -140,17 +143,28 @@ For example:
 - `%regex { "substring_chars": "ab c" }` is equivalent to
   `%regex { "substring_chunks": ["a", "b", " ", "c"] }`
 
+We may want to switch to more JSON-schema like syntax:
+
+```lark
+ABC: %regex {
+  "type": "substring",
+  "chunks": ["a", "b", "c"]
+}
+```
+
 #### Future extensions
 
 Following `%regex` syntax is planned (compatible with JSON schema):
 
 ```lark
 BOUNDED_NUM: %regex {
+  "type": "number",
   "minimum": -17.3,
   "maximum": 33.721
 }
 
 MULT_NUM: %regex {
+  "type": "integer",
   "exclusiveMinimum": 0,
   "multipleOf": 10
 }
