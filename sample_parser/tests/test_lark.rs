@@ -1,5 +1,7 @@
 use anyhow::Result;
-use llguidance::{api::TopLevelGrammar, earley::XorShift, TokenParser};
+use llguidance::{
+    api::TopLevelGrammar, earley::XorShift, substring::chunk_into_words, TokenParser,
+};
 use sample_parser::*;
 
 fn make_parser(lark: &str, quiet: bool) -> Result<TokenParser> {
@@ -546,4 +548,30 @@ fn test_large_select() {
     }
 
     println!("large_select: {:?}; grm={}kB", t0.elapsed(), grm_sz / 1024);
+}
+
+#[test]
+fn test_large_substring_words() {
+    let words_str = gen_words(1, 5000);
+    let words = chunk_into_words(&words_str);
+    let grm = format!(
+        "start: %lexeme {{ \"substring_words\": {} }}",
+        quote_str(&words_str)
+    );
+
+    let mtch = words[50..100].to_vec().join("");
+    let no_mtch = format!("{}{}", mtch, "XXX");
+    lark_str_test_many_quiet(&grm, &[&mtch], &[&no_mtch]);
+}
+
+#[test]
+fn test_large_substring_chars() {
+    let chars = gen_words(2, 15000)[..10000].to_string();
+    let grm = format!(
+        "start: %lexeme {{ \"substring_chars\": {} }}",
+        quote_str(&chars)
+    );
+    let mtch = chars[50..100].to_string();
+    let no_mtch = format!("{}{}", mtch, "XXX");
+    lark_str_test_many_quiet(&grm, &[&mtch], &[&no_mtch]);
 }
