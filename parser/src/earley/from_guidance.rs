@@ -8,6 +8,7 @@ use crate::api::{
     TopLevelGrammar, DEFAULT_CONTEXTUAL,
 };
 use crate::earley::lexerspec::{token_ranges_to_string, LexemeClass};
+use crate::substring::substring;
 use crate::{lark_to_llguidance, loginfo, JsonCompileOptions, Logger};
 use anyhow::{anyhow, bail, ensure, Result};
 use derivre::{ExprRef, JsonQuoteOptions, RegexAst, RegexBuilder};
@@ -47,7 +48,8 @@ pub fn regex_nodes_to_derivre(
 ) -> Result<Vec<ExprRef>> {
     let mut rx_refs = vec![];
     for node in rx_nodes {
-        rx_refs.push(builder.mk(&map_node(&rx_refs, node)?)?);
+        let node = map_node(builder, &rx_refs, node)?;
+        rx_refs.push(builder.mk(&node)?);
         ensure!(
             builder.exprset().cost() <= limits.initial_lexer_fuel,
             "initial lexer configuration (rx_nodes) too big (limit for this grammar: {})",
@@ -56,7 +58,11 @@ pub fn regex_nodes_to_derivre(
     }
     return Ok(rx_refs);
 
-    fn map_node(rx_refs: &[ExprRef], node: RegexNode) -> Result<RegexAst> {
+    fn map_node(
+        builder: &mut RegexBuilder,
+        rx_refs: &[ExprRef],
+        node: RegexNode,
+    ) -> Result<RegexAst> {
         match node {
             RegexNode::Not(id) => Ok(RegexAst::Not(Box::new(map_rx_ref(rx_refs, id)?))),
             RegexNode::Repeat(id, min, max) => Ok(RegexAst::Repeat(
@@ -87,6 +93,10 @@ pub fn regex_nodes_to_derivre(
                 },
             )),
             RegexNode::MultipleOf(d, s) => Ok(RegexAst::MultipleOf(d, s)),
+            RegexNode::Substring(chunks) => {
+                let eref = substring(builder, chunks.iter().map(|s| s.as_str()).collect())?;
+                Ok(RegexAst::ExprRef(eref))
+            }
         }
     }
 }

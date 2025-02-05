@@ -412,8 +412,8 @@ impl Parser {
             Ok(Value::SpecialToken(special_token.value))
         } else if let Some(json_val) = self.match_token_with_value(Token::KwJson) {
             Ok(Value::Json(json_val.value))
-        } else if let Some(json_val) = self.match_token_with_value(Token::KwLexeme) {
-            Ok(Value::Lexeme(json_val.value))
+        } else if let Some(json_val) = self.match_token_with_value(Token::KwRegex) {
+            Ok(Value::RegexExt(json_val.value))
         } else if let Some(name_token) = self
             .match_token_with_value(Token::Rule)
             .or_else(|| self.match_token_with_value(Token::Token))

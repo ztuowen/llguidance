@@ -313,26 +313,23 @@ fn test_lark_syntax_perc() {
         "failed to parse %llguidance declaration",
     );
 
-    lark_ok(r#" start: %lexeme { "substring_words": "foo bar" } "#);
-    lark_ok(r#" start: %lexeme { "substring_chars": "foo bar" } "#);
-    lark_ok(r#" start: %lexeme { "substring_chunks": ["foo", "bar"] } "#);
+    lark_ok(r#" start: %regex { "substring_words": "foo bar" } "#);
+    lark_ok(r#" start: %regex { "substring_chars": "foo bar" } "#);
+    lark_ok(r#" start: %regex { "substring_chunks": ["foo", "bar"] } "#);
 
     lark_err_test(
-        r#" start: %lexeme { "substring_words": true } "#,
-        "failed to parse %lexeme declaration",
+        r#" start: %regex { "substring_words": true } "#,
+        "failed to parse %regex",
     );
 
-    lark_err_test(r#" start: %lexeme { "foobar": true } "#, "unknown field");
-
-    lark_err_test(
-        r#" start: %lexeme { "substring_words": "aa", "substring_chars": "bb" } "#,
-        "only one field can be set on %lexeme declaration",
-    );
+    lark_err_test(r#" start: %regex { "foobar": true } "#, "unknown field");
 
     lark_err_test(
-        r#" start: %lexeme {  } "#,
-        "no fields set on %lexeme declaration",
+        r#" start: %regex { "substring_words": "aa", "substring_chars": "bb" } "#,
+        "only one field can be set on %regex",
     );
+
+    lark_err_test(r#" start: %regex {  } "#, "no fields set on %regex");
 }
 
 #[test]
@@ -410,22 +407,28 @@ fn test_repeat() {
 
 #[test]
 fn test_lexeme_substring_general() {
-    lark_str_test_many(
-        r#" start: "A" %lexeme { "substring_words": "foo bar baz" } "B" "#,
-        &[
-            "AfooB",
-            "Abar bazB",
-            "AbazB",
-            "Afoo bar bazB",
-            "Afoo bar B",
-            "A bar bazB",
-            "AB",
-        ],
-        &["Afoo bar baz", "AfoB"],
-    );
+    for grm in &[
+        r#" start: "A" %regex { "substring_words": "foo bar baz" } "B" "#,
+        r#" start: SUB
+            SUB: "A" %regex { "substring_words": "foo bar baz" } "B" "#,
+    ] {
+        lark_str_test_many(
+            grm,
+            &[
+                "AfooB",
+                "Abar bazB",
+                "AbazB",
+                "Afoo bar bazB",
+                "Afoo bar B",
+                "A bar bazB",
+                "AB",
+            ],
+            &["Afoo bar baz", "AfoB"],
+        );
+    }
 
     lark_str_test_many(
-        r#" start: "A" %lexeme { "substring_chunks": ["foo", " bar", " baz"] } "B" "#,
+        r#" start: "A" %regex { "substring_chunks": ["foo", " bar", " baz"] } "B" "#,
         &[
             "AfooB",
             "A bar bazB",
@@ -442,7 +445,7 @@ fn test_lexeme_substring_general() {
 #[test]
 fn test_lexeme_substring_chars_ascii() {
     lark_str_test_many(
-        r#"start: %lexeme { "substring_chars": "The quick brown fox jumps over the lazy dog." }"#,
+        r#"start: %regex { "substring_chars": "The quick brown fox jumps over the lazy dog." }"#,
         &[
             "The quick brown fox jumps over the lazy dog.",
             "The quick brown fox",
@@ -457,7 +460,7 @@ fn test_lexeme_substring_chars_ascii() {
 #[test]
 fn test_lexeme_substring_chars_unicode() {
     lark_str_test_many(
-        r#"start: %lexeme { "substring_chars": "빠른 갈색 여우가 게으른 개를 뛰어넘었다." }"#,
+        r#"start: %regex { "substring_chars": "빠른 갈색 여우가 게으른 개를 뛰어넘었다." }"#,
         &[
             "빠른 갈색 여우가 게으른 개를 뛰어넘었다.",
             "빠른 갈색 여우가 게으른",
@@ -472,7 +475,7 @@ fn test_lexeme_substring_chars_unicode() {
 #[test]
 fn test_lexeme_substring_words_ascii() {
     lark_str_test_many(
-        r#"start: %lexeme { "substring_words": "The quick brown fox jumps over the lazy dog." }"#,
+        r#"start: %regex { "substring_words": "The quick brown fox jumps over the lazy dog." }"#,
         &[
             "The quick brown fox jumps over the lazy dog.",
             "The quick brown fox",
@@ -485,7 +488,7 @@ fn test_lexeme_substring_words_ascii() {
 #[test]
 fn test_lexeme_substring_words_unicode() {
     lark_str_test_many(
-        r#"start: %lexeme { "substring_words": "빠른 갈색 여우가 게으른 개를 뛰어넘었다." }"#,
+        r#"start: %regex { "substring_words": "빠른 갈색 여우가 게으른 개를 뛰어넘었다." }"#,
         &[
             "빠른 갈색 여우가 게으른 개를 뛰어넘었다.",
             "빠른 갈색 여우가 게으른",
@@ -555,7 +558,7 @@ fn test_large_substring_words() {
     let words_str = gen_words(1, 5000);
     let words = chunk_into_words(&words_str);
     let grm = format!(
-        "start: %lexeme {{ \"substring_words\": {} }}",
+        "start: %regex {{ \"substring_words\": {} }}",
         quote_str(&words_str)
     );
 
@@ -568,7 +571,7 @@ fn test_large_substring_words() {
 fn test_large_substring_chars() {
     let chars = gen_words(2, 15000)[..10000].to_string();
     let grm = format!(
-        "start: %lexeme {{ \"substring_chars\": {} }}",
+        "start: %regex {{ \"substring_chars\": {} }}",
         quote_str(&chars)
     );
     let mtch = chars[50..100].to_string();

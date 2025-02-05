@@ -112,6 +112,56 @@ for example: `mygen[stop="\n", max_tokens=10, temperature=0.7]: /.*/`
 If `stop` is specified (possibly as `""`) the rule is treated as `gen()` in Guidance
 (the lexeme is lazy); otherwise it is treated as `lexeme()` (greedy).
 
+### Extended %regex
+
+LLGuidance supports [extended regex syntax](https://docs.rs/regex/latest/regex/#syntax) in `/.../`.
+This includes character classes (`/[a-zA-Z]/`), repetition (`/a+/`, `/a*/`, `/a{10,100}/`, `/a{10,}/`, `/a?/`),
+alternation (`/a|b/`), and grouping (`/(ab)+/`).
+
+Additionally, regexes can be defined with the standard Lark syntax, using [upper-case names](#terminals-vs-rules):
+
+```lark
+INT: "-"? UINT # equivalent to /(-)?[0-9]+/
+UINT: DIGIT+
+DIGIT: /[0-9]/
+```
+
+Additionally, extended regex nodes can be defined using `%regex { ... }` syntax.
+
+#### Substring
+
+`%regex { "substring_chunks": lst }` will match `lst[n:m].join("")` for some `n <= m <= len(lst)`.
+Additionally `substring_words` or `substring_chars` can be specified.
+For example:
+
+- `%regex { "substring_chunks": ["abc", "de", "fg"] }` matches `""`, `"abc"`, `"de"`, `"abcde"`, `"defg"`, `"abcdefg"`, etc.; it doesn't match `"ab"` not `"cde"`
+- `%regex { "substring_words": "foo bar. baz" }` is equivalent to
+  `%regex { "substring_chunks": ["foo", " ", "bar", ".", " ", "baz"] }`
+- `%regex { "substring_chars": "ab c" }` is equivalent to
+  `%regex { "substring_chunks": ["a", "b", " ", "c"] }`
+
+#### Future extensions
+
+Following `%regex` syntax is planned (compatible with JSON schema):
+
+```lark
+BOUNDED_NUM: %regex {
+  "minimum": -17.3,
+  "maximum": 33.721
+}
+
+MULT_NUM: %regex {
+  "exclusiveMinimum": 0,
+  "multipleOf": 10
+}
+```
+
+We also plan to add `&` and `~` operators:
+
+```lark
+ASCII_LINES: /[a-zA-Z \n]*/ & ~/.*\n\n.*/
+```
+
 ### Grammar options
 
 Certain grammar options can be set by using `%llguidnace { ... }`,

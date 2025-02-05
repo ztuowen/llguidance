@@ -1,7 +1,6 @@
 use anyhow::Result;
+use derivre::{ExprRef, RegexAst, RegexBuilder};
 use std::{collections::HashMap, vec};
-
-use crate::{api::RegexId, grammar_builder::RegexBuilder};
 
 #[derive(Debug)]
 struct State<'a> {
@@ -84,12 +83,12 @@ impl<'a> SuffixAutomaton<'a> {
     }
 }
 
-pub fn substring(builder: &mut RegexBuilder, chunks: Vec<&str>) -> Result<RegexId> {
+pub fn substring(builder: &mut RegexBuilder, chunks: Vec<&str>) -> Result<ExprRef> {
     let sa = SuffixAutomaton::from_string(chunks);
     let mut state_stack = vec![0];
-    let mut node_cache: HashMap<usize, RegexId> = HashMap::new();
+    let mut node_cache: HashMap<usize, ExprRef> = HashMap::new();
 
-    let empty = builder.literal("".to_string());
+    let empty = ExprRef::EMPTY_STRING;
 
     while let Some(state_index) = state_stack.last() {
         let state = &sa.states[*state_index];
@@ -118,12 +117,16 @@ pub fn substring(builder: &mut RegexBuilder, chunks: Vec<&str>) -> Result<RegexI
             .next
             .keys()
             .map(|c| {
-                let lit = builder.literal(c.to_string());
-                builder.concat(vec![lit, node_cache[&state.next[c]]])
+                builder
+                    .mk(&RegexAst::Concat(vec![
+                        RegexAst::Literal(c.to_string()),
+                        RegexAst::ExprRef(node_cache[&state.next[c]]),
+                    ]))
+                    .map(RegexAst::ExprRef)
             })
-            .collect::<Vec<_>>();
-        options.push(empty);
-        let expr = builder.or(options);
+            .collect::<Result<Vec<_>>>()?;
+        options.push(RegexAst::ExprRef(empty));
+        let expr = builder.mk(&RegexAst::Or(options))?;
         node_cache.insert(*state_index, expr);
         state_stack.pop();
     }
@@ -183,22 +186,11 @@ pub fn chunk_into_words(input: &str) -> Vec<&str> {
 
 #[cfg(test)]
 mod test {
-    use derivre::Regex;
-
-    use crate::{
-        api::{ParserLimits, RegexId},
-        earley::regex_nodes_to_derivre,
-        grammar_builder::RegexBuilder,
-    };
-
     use super::{chunk_into_chars, chunk_into_words, substring};
+    use derivre::{ExprRef, Regex, RegexBuilder};
 
-    fn to_regex(mut builder: RegexBuilder, expr: RegexId) -> Regex {
-        let limits = ParserLimits::default();
-        let mut d_builder = derivre::RegexBuilder::new();
-        let r = regex_nodes_to_derivre(&mut d_builder, &limits, builder.finalize()).unwrap();
-        let eref = r[expr.0];
-        d_builder.to_regex(eref)
+    fn to_regex(builder: RegexBuilder, expr: ExprRef) -> Regex {
+        builder.to_regex(expr)
     }
 
     #[test]

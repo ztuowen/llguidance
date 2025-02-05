@@ -289,6 +289,8 @@ pub enum RegexNode {
     /// MultipleOf(d, s) matches if the input, interpreted as decimal ASCII number, is a multiple of d*10^-s.
     /// EmptyString is not included.
     MultipleOf(u32, u32),
+    /// Matches any (possibly empty) contiguous sub-sequence of these chunks.
+    Substring(Vec<String>),
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
@@ -369,7 +371,7 @@ impl Default for GenGrammarOptions {
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
-pub struct LarkLexeme {
+pub struct RegexExt {
     /// The lexeme should accept any (possibly empty) contiguous sequence of these chunks.
     pub substring_chunks: Option<Vec<String>>,
     /// Similar to `substring_chunks: s.split(/\s+/)`
