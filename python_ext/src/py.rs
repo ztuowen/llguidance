@@ -42,6 +42,7 @@ struct LLExecutor {
 #[pymethods]
 impl LLExecutor {
     #[new]
+    #[pyo3(signature = (num_threads=None))]
     fn py_new(num_threads: Option<usize>) -> PyResult<Self> {
         let num_threads = num_threads.unwrap_or_else(|| {
             let n = std::thread::available_parallelism().unwrap().get();
@@ -158,6 +159,7 @@ impl LLInterpreter {
 #[pymethods]
 impl LLInterpreter {
     #[new]
+    #[pyo3(signature = (tokenizer, llguidance_json, enable_backtrack=None, enable_ff_tokens=None, log_level=None))]
     fn py_new(
         tokenizer: &LLTokenizer,
         llguidance_json: &str,
@@ -280,6 +282,7 @@ impl LLInterpreter {
         Ok((mask, self.json_py_result()))
     }
 
+    #[pyo3(signature = (sampled_token))]
     fn commit_token(&mut self, sampled_token: Option<TokenId>) -> PyResult<(u32, Vec<TokenId>)> {
         let pres = self.inner.commit_token(sampled_token).map_err(val_error)?;
 
@@ -307,6 +310,7 @@ struct PyMidProcessResult {
 #[pymethods]
 impl LLTokenizer {
     #[new]
+    #[pyo3(signature = (tokenizer, n_vocab=None, eos_token=None, slices=None))]
     fn py_new(
         tokenizer: Bound<'_, PyAny>,
         n_vocab: Option<usize>,
@@ -563,6 +567,7 @@ impl RegexCompiler {
     fn py_new() -> Self {
         RegexCompiler {}
     }
+    #[pyo3(signature = (regex, stop_regex=None))]
     fn compile(&self, regex: &str, stop_regex: Option<&str>) -> PyResult<String> {
         let mut builder = GrammarBuilder::new();
         builder.add_grammar(GrammarWithLexer::default());

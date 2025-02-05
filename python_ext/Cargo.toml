@@ -7,7 +7,7 @@ edition = "2021"
 llguidance = { workspace = true }
 toktrie_hf_tokenizers = { workspace = true, optional = true }
 bytemuck = "1.19.0"
-pyo3 = {version = "0.21.2", features = ["extension-module", "abi3-py39"]}
+pyo3 = {version = "0.23.4", features = ["extension-module", "abi3-py39", "anyhow"]}
 serde = { version = "1.0.210", features = ["derive"] }
 serde_json = "1.0.132"
 rayon = "1.10.0"
