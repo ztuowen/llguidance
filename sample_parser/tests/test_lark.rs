@@ -1,10 +1,14 @@
 use anyhow::Result;
-use llguidance::{api::TopLevelGrammar, TokenParser};
+use llguidance::{api::TopLevelGrammar, earley::XorShift, TokenParser};
 use sample_parser::*;
 
-fn make_parser(lark: &str) -> Result<TokenParser> {
+fn make_parser(lark: &str, quiet: bool) -> Result<TokenParser> {
     let grm = TopLevelGrammar::from_lark(lark.to_string());
-    let mut parser = get_parser_factory().create_parser(grm)?;
+    let mut parser = get_parser_factory().create_parser_ext2(
+        grm,
+        if quiet { 0 } else { 2 },
+        if quiet { 1 } else { 2 },
+    )?;
     parser.start_without_prompt();
     Ok(parser)
 }
@@ -15,14 +19,14 @@ fn consume(parser: &mut TokenParser, tok: u32) {
 }
 
 fn lark_ok(lark: &str) {
-    match make_parser(lark) {
+    match make_parser(lark, false) {
         Err(e) => panic!("unexpected error: {}, grm:\n{}", e, lark),
         Ok(_) => {}
     }
 }
 
 fn lark_err_test(lark: &str, err: &str) {
-    match make_parser(lark) {
+    match make_parser(lark, false) {
         Err(e) => {
             let e = format!("{}", e);
             if !e.contains(err) {
@@ -36,17 +40,21 @@ fn lark_err_test(lark: &str, err: &str) {
     }
 }
 
-fn lark_str_test(lark: &str, should_accept: bool, s: &str) {
+fn lark_str_test(lark: &str, should_accept: bool, s: &str, quiet: bool) {
     let trie = get_tok_env().tok_trie();
     let tokens = get_tok_env().tokenize(s);
-    println!(
-        "\n\ntokens: {}, accpt={}\ngrm:\n{}\n",
-        trie.tokens_dbg(&tokens),
-        should_accept,
-        lark
-    );
+    if !quiet {
+        println!(
+            "\n\ntokens: {}, accpt={}\ngrm:\n{}\n",
+            trie.tokens_dbg(&tokens),
+            should_accept,
+            lark
+        );
+    }
 
-    let mut p = make_parser(lark).unwrap();
+    // let t0 = std::time::Instant::now();
+    let mut p = make_parser(lark, quiet).unwrap();
+    // println!("make_parser: {:?}", t0.elapsed());
 
     for tok in tokens.iter() {
         let m = p.compute_mask().unwrap();
@@ -70,13 +78,21 @@ fn lark_str_test(lark: &str, should_accept: bool, s: &str) {
     }
 }
 
-fn lark_str_test_many(lark: &str, passing: &[&str], failing: &[&str]) {
+fn lark_str_test_many_ext(quiet: bool, lark: &str, passing: &[&str], failing: &[&str]) {
     for s in passing {
-        lark_str_test(lark, true, s);
+        lark_str_test(lark, true, s, quiet);
     }
     for s in failing {
-        lark_str_test(lark, false, s);
+        lark_str_test(lark, false, s, quiet);
     }
+}
+
+fn lark_str_test_many(lark: &str, passing: &[&str], failing: &[&str]) {
+    lark_str_test_many_ext(false, lark, passing, failing);
+}
+
+fn lark_str_test_many_quiet(lark: &str, passing: &[&str], failing: &[&str]) {
+    lark_str_test_many_ext(true, lark, passing, failing);
 }
 
 #[test]
@@ -475,4 +491,59 @@ fn test_lexeme_substring_words_unicode() {
         ],
         &["른 갈색 여우", "여우가 게으", "갈색 여가"],
     );
+}
+
+fn gen_words(seed: u32, num_words: usize) -> String {
+    let letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789,.";
+    let mut rnd = XorShift::new(seed + 1);
+    let mut words = vec![];
+    let num_words = rnd.from_range((num_words / 2)..num_words);
+    for _ in 0..num_words {
+        let mut word = String::new();
+        let len = rnd.from_range(1..15);
+        for _ in 0..len {
+            let idx = rnd.from_range(0..letters.len());
+            word.push(letters.as_bytes()[idx as usize] as char);
+        }
+        words.push(word);
+    }
+    words.join(" ")
+}
+
+fn quote_str(s: &str) -> String {
+    serde_json::to_string(s).unwrap()
+}
+
+#[test]
+fn test_large_select() {
+    let num_words = 500;
+    // it's kind of slow in non-release mode
+    let num_opt = if cfg!(debug_assertions) { 100 } else { 1500 };
+
+    let t0 = std::time::Instant::now();
+    let mut grm_sz = 0;
+
+    for start in &["start: OPTS\nOPTS: ", "start: opts\nopts: "] {
+        let mut grm_head = start.to_string();
+        let mut grm_tail = "".to_string();
+        let options = (0..num_opt)
+            .map(|i| gen_words(i, num_words))
+            .collect::<Vec<_>>();
+        for (i, opt) in options.iter().enumerate() {
+            grm_head.push_str(&format!("OPT{} | ", i));
+            grm_tail.push_str(&format!("OPT{}: {}\n", i, quote_str(opt)));
+        }
+        grm_head.push_str(" \"\"\n");
+        let grm = format!("{}{}", grm_head, grm_tail);
+        grm_sz = grm.len();
+
+        lark_str_test_many_quiet(
+            &grm,
+            //&options.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
+            &[&options[2].as_str(), &options[7].as_str()],
+            &["something that is unlikely to be in the options"],
+        );
+    }
+
+    println!("large_select: {:?}; grm={}kB", t0.elapsed(), grm_sz / 1024);
 }

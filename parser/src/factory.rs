@@ -86,7 +86,7 @@ impl ParserFactory {
     }
 
     pub fn create_parser(&self, grammar: TopLevelGrammar) -> Result<TokenParser> {
-        self.create_parser_ext(grammar, self.buffer_log_level)
+        self.create_parser_ext2(grammar, self.buffer_log_level, self.stderr_log_level)
     }
 
     pub fn create_parser_ext(
@@ -94,10 +94,19 @@ impl ParserFactory {
         grammar: TopLevelGrammar,
         buffer_log_level: u32,
     ) -> Result<TokenParser> {
+        self.create_parser_ext2(grammar, buffer_log_level, self.stderr_log_level)
+    }
+
+    pub fn create_parser_ext2(
+        &self,
+        grammar: TopLevelGrammar,
+        buffer_log_level: u32,
+        stderr_log_level: u32,
+    ) -> Result<TokenParser> {
         let mut parser = TokenParser::from_llguidance_json(
             self.tok_env.clone(),
             grammar,
-            Logger::new(buffer_log_level, self.stderr_log_level),
+            Logger::new(buffer_log_level, stderr_log_level),
             self.inference_caps.clone(),
             self.limits.clone(),
             self.extra_lexemes(),

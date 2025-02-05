@@ -43,6 +43,7 @@ if [ "$TEST_RUST" = 1 ] ; then
 
     cargo build --locked
     cargo test
+    cargo test --release
 
     echo "Running sample_parser"
     (cd sample_parser && ./run.sh >/dev/null)

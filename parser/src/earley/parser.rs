@@ -103,6 +103,12 @@ impl XorShift {
         x
     }
 
+    pub fn from_range(&mut self, r: Range<usize>) -> usize {
+        assert!(r.start < r.end);
+        assert!(r.end < std::u32::MAX as usize);
+        r.start + (self.next() as usize) % (r.end - r.start)
+    }
+
     pub fn one_in(&mut self, n: u32) -> bool {
         self.next() % n == 0
     }
