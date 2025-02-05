@@ -156,7 +156,7 @@ Example:
 Following features of Lark syntax are currently not supported:
 
 - lookarounds in lexer regexes
-- lazy modifier (`?`) in lexer regexes; you [can use](#lexeme-options) `[stop=""]` to make the entire lexeme lazy
+- lazy modifier (`?`) in lexer regexes; you [can use](#lexeme-options) `[lazy]` to make the entire lexeme lazy
 - priorities of terminals
 - templates
 - imports (other than built-in `%import common`)

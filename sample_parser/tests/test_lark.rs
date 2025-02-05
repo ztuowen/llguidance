@@ -101,7 +101,7 @@ fn test_dot_unicode() {
 }
 
 #[test]
-fn test_lark_syntax() {
+fn test_lark_syntax_general() {
     lark_err_test(r#"root: "abc" "def""#, "no start");
 
     lark_err_test(
@@ -212,28 +212,28 @@ fn test_lark_syntax() {
             start: FOO
             FOO: @1
         "#,
-        "cannot be used as terminals",
+        "cannot be used in terminals",
     );
     lark_err_test(
         r#"
             start: FOO
             FOO: %json { }
         "#,
-        "cannot be used as terminals",
+        "cannot be used in terminals",
     );
     lark_err_test(
         r#"
             start: FOO
             FOO: <[1234]>
         "#,
-        "cannot be used as terminals",
+        "cannot be used in terminals",
     );
     lark_err_test(
         r#"
             start: FOO
             FOO: <|assistant|>
         "#,
-        "cannot be used as terminals",
+        "cannot be used in terminals",
     );
     lark_err_test(
         r#"
@@ -259,6 +259,26 @@ fn test_lark_syntax() {
     lark_err_test(r#"start: <[200-100]>"#, "invalid token range");
     lark_err_test(r#"start: <[200 - 100]>"#, "lexer error");
 
+    lark_err_test(
+        r#"
+            start: foo
+            foo: "a" | "b"
+            foo: "c"
+        "#,
+        "duplicate rule",
+    );
+    lark_err_test(
+        r#"
+            start: FOO
+            FOO: "a" | "b"
+            FOO: "c"
+        "#,
+        "duplicate token",
+    );
+}
+
+#[test]
+fn test_lark_syntax_perc() {
     lark_err_test(r#"start: %json {"#, "EOF while parsing an object");
     lark_err_test(r#"start: %json { foo"#, "key must be a string");
     lark_err_test(r#"start: %json []"#, "failed to compile JSON schema");
@@ -275,21 +295,71 @@ fn test_lark_syntax() {
         "failed to parse %llguidance declaration",
     );
 
+    lark_ok(r#" start: %lexeme { "substring_words": "foo bar" } "#);
+    lark_ok(r#" start: %lexeme { "substring_chars": "foo bar" } "#);
+    lark_ok(r#" start: %lexeme { "substring_chunks": ["foo", "bar"] } "#);
+
     lark_err_test(
-        r#"
-            start: foo
-            foo: "a" | "b"
-            foo: "c"
-        "#,
-        "duplicate rule",
+        r#" start: %lexeme { "substring_words": true } "#,
+        "failed to parse %lexeme declaration",
     );
+
+    lark_err_test(r#" start: %lexeme { "foobar": true } "#, "unknown field");
+
     lark_err_test(
-        r#"
-            start: FOO
-            FOO: "a" | "b"
-            FOO: "c"
-        "#,
-        "duplicate token",
+        r#" start: %lexeme { "substring_words": "aa", "substring_chars": "bb" } "#,
+        "only one field can be set on %lexeme declaration",
+    );
+
+    lark_err_test(
+        r#" start: %lexeme {  } "#,
+        "no fields set on %lexeme declaration",
+    );
+}
+
+#[test]
+fn test_lark_syntax_attributes() {
+    lark_ok(
+        r#" start: foo
+            foo[lazy]: /.*/ "#,
+    );
+
+    lark_ok(
+        r#" start: foo
+            foo[lazy,max_tokens=12]: /.*/ "#,
+    );
+
+    lark_ok(
+        r#" start: foo
+            foo[capture,lazy]: /.*/ "#,
+    );
+
+    lark_ok(
+        r#" start: foo
+            foo[capture , lazy]: /.*/ "#,
+    );
+
+    lark_ok(
+        r#" start: foo
+            foo[stop = "foobar"]: /.*/ "#,
+    );
+
+    lark_err_test(
+        r#" start: foo
+            foo[foobar=12]: /.*/ "#,
+        "Unknown attribute",
+    );
+
+    lark_err_test(
+        r#" start: foo
+            foo[lazy="foo"]: /.*/ "#,
+        "Expected token",
+    );
+
+    lark_err_test(
+        r#" start: foo
+            foo[max_tokens="foo"]: /.*/ "#,
+        "Expected token",
     );
 }
 
@@ -317,5 +387,92 @@ fn test_repeat() {
         "#,
         &["", "aa", "b", "aba", "abaa", "aaaaa", "aabaa"],
         &["aaaaaa"],
+    );
+}
+
+#[test]
+fn test_lexeme_substring_general() {
+    lark_str_test_many(
+        r#" start: "A" %lexeme { "substring_words": "foo bar baz" } "B" "#,
+        &[
+            "AfooB",
+            "Abar bazB",
+            "AbazB",
+            "Afoo bar bazB",
+            "Afoo bar B",
+            "A bar bazB",
+            "AB",
+        ],
+        &["Afoo bar baz", "AfoB"],
+    );
+
+    lark_str_test_many(
+        r#" start: "A" %lexeme { "substring_chunks": ["foo", " bar", " baz"] } "B" "#,
+        &[
+            "AfooB",
+            "A bar bazB",
+            "A bazB",
+            "Afoo bar bazB",
+            "Afoo barB",
+            "AB",
+            "A bar bazB",
+        ],
+        &["Afoo bar baz", "AfoB"],
+    );
+}
+
+#[test]
+fn test_lexeme_substring_chars_ascii() {
+    lark_str_test_many(
+        r#"start: %lexeme { "substring_chars": "The quick brown fox jumps over the lazy dog." }"#,
+        &[
+            "The quick brown fox jumps over the lazy dog.",
+            "The quick brown fox",
+            "he quick brow",
+            "fox jump",
+            "dog.",
+        ],
+        &["brown fx"],
+    );
+}
+
+#[test]
+fn test_lexeme_substring_chars_unicode() {
+    lark_str_test_many(
+        r#"start: %lexeme { "substring_chars": "빠른 갈색 여우가 게으른 개를 뛰어넘었다." }"#,
+        &[
+            "빠른 갈색 여우가 게으른 개를 뛰어넘었다.",
+            "빠른 갈색 여우가 게으른",
+            "른 갈색 여우",
+            "여우가 게으",
+            "뛰어넘었다.",
+        ],
+        &["갈색 여가"],
+    );
+}
+
+#[test]
+fn test_lexeme_substring_words_ascii() {
+    lark_str_test_many(
+        r#"start: %lexeme { "substring_words": "The quick brown fox jumps over the lazy dog." }"#,
+        &[
+            "The quick brown fox jumps over the lazy dog.",
+            "The quick brown fox",
+            "dog.",
+        ],
+        &["he quick brow", "fox jump", "brown fx"],
+    );
+}
+
+#[test]
+fn test_lexeme_substring_words_unicode() {
+    lark_str_test_many(
+        r#"start: %lexeme { "substring_words": "빠른 갈색 여우가 게으른 개를 뛰어넘었다." }"#,
+        &[
+            "빠른 갈색 여우가 게으른 개를 뛰어넘었다.",
+            "빠른 갈색 여우가 게으른",
+            "뛰어넘었다.",
+        ],
+        &["른 갈색 여우", "여우가 게으", "갈색 여가"],
     );
 }

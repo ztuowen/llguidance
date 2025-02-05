@@ -5,10 +5,11 @@ use hashbrown::{HashMap, HashSet};
 
 use crate::{
     api::{
-        GenGrammarOptions, GenOptions, GrammarId, GrammarWithLexer, LLGuidanceOptions, Node,
-        NodeProps, RegexId, RegexSpec, TopLevelGrammar,
+        GenGrammarOptions, GenOptions, GrammarId, GrammarWithLexer, LLGuidanceOptions, LarkLexeme,
+        Node, NodeProps, RegexId, RegexSpec, TopLevelGrammar,
     },
     json::json_merge,
+    substring::{chunk_into_chars, chunk_into_words, substring},
     GrammarBuilder, JsonCompileOptions, NodeRef,
 };
 
@@ -154,14 +155,17 @@ impl Compiler {
                     self.mk_regex("regex", rx)
                 }
                 Value::SpecialToken(s) => {
-                    bail!("special tokens (like {:?}) cannot be used as terminals", s);
+                    bail!("special tokens (like {:?}) cannot be used in terminals", s);
                 }
                 Value::Json(_) => {
-                    bail!("%json literals cannot be used as terminals");
+                    bail!("%json literals cannot be used in terminals");
+                }
+                Value::Lexeme(_) => {
+                    bail!("%lexeme literals cannot be used in terminals");
                 }
                 Value::GrammarRef(g) => {
                     bail!(
-                        "grammar references (like {:?}) cannot be used as terminals",
+                        "grammar references (like {:?}) cannot be used in terminals",
                         g
                     );
                 }
@@ -310,6 +314,11 @@ impl Compiler {
                             },
                             NodeProps::default(),
                         ));
+                    }
+                    Value::Lexeme(s) => {
+                        let opts: LarkLexeme = serde_json::from_str(&s)
+                            .map_err(|e| anyhow!("failed to parse %lexeme declaration: {}", e))?;
+                        return lark_lexeme_to_lexeme(&mut self.builder, opts);
                     }
                     Value::LiteralRange(_, _)
                     | Value::LiteralString(_, _)
@@ -605,4 +614,38 @@ impl Grammar {
         }
         Ok(())
     }
+}
+
+fn lark_lexeme_to_lexeme(builder: &mut GrammarBuilder, l: LarkLexeme) -> Result<NodeRef> {
+    let mut fields_set = vec![];
+    if l.substring_chunks.is_some() {
+        fields_set.push("substring_chunks");
+    }
+    if l.substring_words.is_some() {
+        fields_set.push("substring_words");
+    }
+    if l.substring_chars.is_some() {
+        fields_set.push("substring_chars");
+    }
+    if fields_set.len() == 0 {
+        bail!("no fields set on %lexeme declaration");
+    }
+    if fields_set.len() > 1 {
+        bail!(
+            "only one field can be set on %lexeme declaration; got {:?}",
+            fields_set
+        );
+    }
+
+    let rx_id = if let Some(s) = l.substring_words {
+        substring(&mut builder.regex, chunk_into_words(&s))?
+    } else if let Some(s) = l.substring_chars {
+        substring(&mut builder.regex, chunk_into_chars(&s))?
+    } else if let Some(s) = l.substring_chunks {
+        substring(&mut builder.regex, s.iter().map(|s| s.as_str()).collect())?
+    } else {
+        unreachable!()
+    };
+
+    Ok(builder.lexeme(RegexSpec::RegexId(rx_id)))
 }

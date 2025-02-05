@@ -358,7 +358,7 @@ fn test_ll_temperature() {
 
     check_lark_grammar(
         r#"start: gen
-           gen[temperature=0.5, stop=""]: /.*/
+           gen[temperature=0.5, lazy]: /.*/
         "#,
         &["", "foo‧≺EOS≻"],
     );
@@ -401,7 +401,7 @@ fn test_llparser() {
     check_lark_grammar_prompt(
         r#"
             start: gen
-            gen[stop=""]: /.*/
+            gen[lazy]: /.*/
         "#,
         "2 + 2 =",
         &["2‧ +‧ ‧2", " =>‧ ‧4‧≺EOS≻"],
@@ -410,7 +410,7 @@ fn test_llparser() {
     check_lark_grammar(
         r#"
             start: "Power frequency is " num "Hz; voltage is " num "V"
-            num[stop="", max_tokens=5]: /[0-9]+/
+            num[lazy, max_tokens=5]: /[0-9]+/
         "#,
         &[
             "Power‧ frequency‧ is‧ ",
@@ -423,7 +423,7 @@ fn test_llparser() {
     check_lark_grammar(
         r#"
             start: "Power frequency is " num "Hz; voltage is " num "V"
-            num[stop="", max_tokens=3]: /[0-9]+/
+            num[lazy, max_tokens=3]: /[0-9]+/
         "#,
         &[
             "Power‧ frequency‧ is‧ ",
@@ -461,22 +461,22 @@ fn test_ll_nullable_lexeme() {
     // make sure 'a' is not forced
     check_lark_grammar(
         r#"start: gen
-           gen[stop=""]: /a*/"#,
+           gen[lazy]: /a*/"#,
         &["", "a‧≺EOS≻"],
     );
 
     // this one doesn't work - no lexeme was scanned by EOS, so we allow more lexemes...
     check_lark_grammar(
         r#"start: gen
-           gen[stop=""]: /a*/"#,
+           gen[lazy]: /a*/"#,
         &["", "≺EOS≻"],
     );
 
     // see that we can skip 5*
     check_lark_grammar(
         r#"start: "6 * 7 = " five_seq num "\n"
-           five_seq[stop=""]: /5*/
-           num[stop=""]: /[1-4][0-9]/"#,
+           five_seq[lazy]: /5*/
+           num[lazy]: /[1-4][0-9]/"#,
         &["6‧ *‧ ‧7‧ =‧ ", "4‧2", "\n"],
     );
 
@@ -582,8 +582,8 @@ fn test_ll_nullable_bug() {
 fn test_ll_max_tokens() {
     check_lark_grammar(
         r#"start: "Name: " name " Height: " height
-           name[max_tokens=3, stop=""]: /.*/
-           height[max_tokens=3, stop=""]: /.*/
+           name[max_tokens=3, lazy]: /.*/
+           height[max_tokens=3, lazy]: /.*/
         "#,
         &["Name‧:", " Em‧ily‧ Carter", " Height‧:", " ‧5‧'‧6"],
     );
@@ -592,8 +592,8 @@ fn test_ll_max_tokens() {
     // but different max_tokens limits
     check_lark_grammar(
         r#"start: "Name: " name " Height: " height
-           name[max_tokens=2, stop=""]: /.*/
-           height[max_tokens=3, stop=""]: /.*/
+           name[max_tokens=2, lazy]: /.*/
+           height[max_tokens=3, lazy]: /.*/
         "#,
         &["Name‧:", " Em‧ily", " Height‧:", " ‧5‧'‧6"],
     );
@@ -603,8 +603,8 @@ fn test_ll_max_tokens() {
     // note how Emily is not repeated
     check_lark_grammar(
         r#"start: "Name: " name "Emily Carter is great; Height: " height
-           name[max_tokens=2, stop=""]: /.*/
-           height[max_tokens=3, stop=""]: /.*/
+           name[max_tokens=2, lazy]: /.*/
+           height[max_tokens=3, lazy]: /.*/
         "#,
         &[
             "Name‧:",
@@ -825,15 +825,15 @@ fn test_ll_dolphin() {
         "#,
         // regular gen()
         r#"start: "Dolphin name: " name ","
-           name[stop=""]: /"[A-Z][a-z]+"/
+           name[lazy]: /"[A-Z][a-z]+"/
         "#,
         // regular gen(), comma in regex
         r#"start: "Dolphin name: " name
-           name[stop=""]: /"[A-Z][a-z]+",/
+           name[lazy]: /"[A-Z][a-z]+",/
         "#,
         // regular gen(), quotes outside
         r#"start: "Dolphin name: \"" name "\","
-           name[stop=""]: /[A-Z][a-z]+/
+           name[lazy]: /[A-Z][a-z]+/
         "#,
     ];
 

@@ -276,18 +276,16 @@ mod test {
             chunk_into_chars("The quick brown fox jumps over the lazy dog."),
         )
         .unwrap();
-        let regex = to_regex(builder, expr);
+        let mut regex = to_regex(builder, expr);
         assert_eq!(
-            regex
-                .clone()
-                .is_match("The quick brown fox jumps over the lazy dog."),
+            regex.is_match("The quick brown fox jumps over the lazy dog."),
             true
         );
-        assert_eq!(regex.clone().is_match("The quick brown fox"), true);
-        assert_eq!(regex.clone().is_match("he quick brow"), true);
-        assert_eq!(regex.clone().is_match("fox jump"), true);
-        assert_eq!(regex.clone().is_match("dog."), true);
-        assert_eq!(regex.clone().is_match("brown fx"), false);
+        assert_eq!(regex.is_match("The quick brown fox"), true);
+        assert_eq!(regex.is_match("he quick brow"), true);
+        assert_eq!(regex.is_match("fox jump"), true);
+        assert_eq!(regex.is_match("dog."), true);
+        assert_eq!(regex.is_match("brown fx"), false);
     }
 
     #[test]
@@ -298,18 +296,16 @@ mod test {
             chunk_into_chars("빠른 갈색 여우가 게으른 개를 뛰어넘었다."),
         )
         .unwrap();
-        let regex = to_regex(builder, expr);
+        let mut regex = to_regex(builder, expr);
         assert_eq!(
-            regex
-                .clone()
-                .is_match("빠른 갈색 여우가 게으른 개를 뛰어넘었다."),
+            regex.is_match("빠른 갈색 여우가 게으른 개를 뛰어넘었다."),
             true
         );
-        assert_eq!(regex.clone().is_match("빠른 갈색 여우가 게으른"), true);
-        assert_eq!(regex.clone().is_match("른 갈색 여우"), true);
-        assert_eq!(regex.clone().is_match("여우가 게으"), true);
-        assert_eq!(regex.clone().is_match("뛰어넘었다."), true);
-        assert_eq!(regex.clone().is_match("갈색 여가"), false);
+        assert_eq!(regex.is_match("빠른 갈색 여우가 게으른"), true);
+        assert_eq!(regex.is_match("른 갈색 여우"), true);
+        assert_eq!(regex.is_match("여우가 게으"), true);
+        assert_eq!(regex.is_match("뛰어넘었다."), true);
+        assert_eq!(regex.is_match("갈색 여가"), false);
     }
 
     #[test]
@@ -320,18 +316,16 @@ mod test {
             chunk_into_words("The quick brown fox jumps over the lazy dog."),
         )
         .unwrap();
-        let regex = to_regex(builder, expr);
+        let mut regex = to_regex(builder, expr);
         assert_eq!(
-            regex
-                .clone()
-                .is_match("The quick brown fox jumps over the lazy dog."),
+            regex.is_match("The quick brown fox jumps over the lazy dog."),
             true
         );
-        assert_eq!(regex.clone().is_match("The quick brown fox"), true);
-        assert_eq!(regex.clone().is_match("he quick brow"), false);
-        assert_eq!(regex.clone().is_match("fox jump"), false);
-        assert_eq!(regex.clone().is_match("dog."), true);
-        assert_eq!(regex.clone().is_match("brown fx"), false);
+        assert_eq!(regex.is_match("The quick brown fox"), true);
+        assert_eq!(regex.is_match("he quick brow"), false);
+        assert_eq!(regex.is_match("fox jump"), false);
+        assert_eq!(regex.is_match("dog."), true);
+        assert_eq!(regex.is_match("brown fx"), false);
     }
 
     #[test]
@@ -342,17 +336,15 @@ mod test {
             chunk_into_words("빠른 갈색 여우가 게으른 개를 뛰어넘었다."),
         )
         .unwrap();
-        let regex = to_regex(builder, expr);
+        let mut regex = to_regex(builder, expr);
         assert_eq!(
-            regex
-                .clone()
-                .is_match("빠른 갈색 여우가 게으른 개를 뛰어넘었다."),
+            regex.is_match("빠른 갈색 여우가 게으른 개를 뛰어넘었다."),
             true
         );
-        assert_eq!(regex.clone().is_match("빠른 갈색 여우가 게으른"), true);
-        assert_eq!(regex.clone().is_match("른 갈색 여우"), false);
-        assert_eq!(regex.clone().is_match("여우가 게으"), false);
-        assert_eq!(regex.clone().is_match("뛰어넘었다."), true);
-        assert_eq!(regex.clone().is_match("갈색 여가"), false);
+        assert_eq!(regex.is_match("빠른 갈색 여우가 게으른"), true);
+        assert_eq!(regex.is_match("른 갈색 여우"), false);
+        assert_eq!(regex.is_match("여우가 게으"), false);
+        assert_eq!(regex.is_match("뛰어넘었다."), true);
+        assert_eq!(regex.is_match("갈색 여가"), false);
     }
 }

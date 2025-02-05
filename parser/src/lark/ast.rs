@@ -126,6 +126,7 @@ pub enum Value {
     GrammarRef(String),
     SpecialToken(String),
     Json(String),
+    Lexeme(String),
     #[allow(dead_code)]
     TemplateUsage {
         name: String,

@@ -367,6 +367,17 @@ impl Default for GenGrammarOptions {
     }
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct LarkLexeme {
+    /// The lexeme should accept any (possibly empty) contiguous sequence of these chunks.
+    pub substring_chunks: Option<Vec<String>>,
+    /// Similar to `substring_chunks: s.split(/\s+/)`
+    pub substring_words: Option<String>,
+    /// Similar to `substring_chunks: s.split('')`
+    pub substring_chars: Option<String>,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum StopReason {
     /// Parser has not emitted stop() yet.

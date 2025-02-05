@@ -140,6 +140,11 @@ impl Parser {
                 "capture" => {
                     rule.capture_name = Some(rule.name.clone());
                 }
+                "lazy" => {
+                    if rule.stop.is_none() {
+                        rule.stop = Some(Value::LiteralString("".to_string(), "".to_string()));
+                    }
+                }
                 _ => {
                     self.expect_token(Token::Equals)?;
                     match key.as_str() {
@@ -407,6 +412,8 @@ impl Parser {
             Ok(Value::SpecialToken(special_token.value))
         } else if let Some(json_val) = self.match_token_with_value(Token::KwJson) {
             Ok(Value::Json(json_val.value))
+        } else if let Some(json_val) = self.match_token_with_value(Token::KwLexeme) {
+            Ok(Value::Lexeme(json_val.value))
         } else if let Some(name_token) = self
             .match_token_with_value(Token::Rule)
             .or_else(|| self.match_token_with_value(Token::Token))
