@@ -5,35 +5,38 @@ import re
 import sys
 
 
-# Function to get the latest commit hash of a git repository
-def get_latest_commit_hash(repo_path):
-    try:
-        result = subprocess.run(
-            ["git", "rev-parse", "HEAD"],
-            cwd=repo_path,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            check=True,
-            text=True,
-        )
-        return result.stdout.strip()
-    except subprocess.CalledProcessError as e:
-        print(f"Error getting commit hash for {repo_path}: {e}")
-        return None
-
-
-# Function to update a single Cargo.toml file with commit hashes
-def update_cargo_toml(cargo_toml_path, derivre_commit):
+def get_version_from_cargo_toml(cargo_toml_path):
     try:
         with open(cargo_toml_path, "r") as file:
             cargo_toml_contents = file.read()
 
-        # Patterns for replacing the rev in Cargo.toml
-        derivre_pattern = r'(derivre\s*=\s*\{[^}]*rev\s*=\s*")[^"]*(")'
+        # Match version field in Cargo.toml
+        match = re.search(r'\bversion\s*=\s*"([^"]+)"', cargo_toml_contents)
+
+        if match:
+            return match.group(1)
+        else:
+            print(f"Error: Version not found in {cargo_toml_path}.")
+            return None
+    except FileNotFoundError:
+        print(f"Error: {cargo_toml_path} not found.")
+        return None
+    except Exception as e:
+        print(f"Error reading {cargo_toml_path}: {e}")
+        return None
+
+
+def update_cargo_toml(cargo_toml_path, derivre_version):
+    try:
+        with open(cargo_toml_path, "r") as file:
+            cargo_toml_contents = file.read()
+
+        # Patterns for replacing the version in Cargo.toml
+        derivre_pattern = r'(derivre\s*=\s*\{[^}]*version\s*=\s*")[^"]*(")'
 
         cargo_toml_contents = re.sub(
             derivre_pattern,
-            lambda m: m.group(1) + derivre_commit + m.group(2),
+            lambda m: m.group(1) + derivre_version + m.group(2),
             cargo_toml_contents,
         )
 
@@ -48,12 +51,12 @@ def update_cargo_toml(cargo_toml_path, derivre_commit):
         print(f"Error updating {cargo_toml_path}: {e}")
 
 
-# Get the latest commit hashes for toktire and derivre
-derivre_commit = get_latest_commit_hash("../derivre")
+# Get the version from ../derivre/Cargo.toml
+derivre_version = get_version_from_cargo_toml("../derivre/Cargo.toml")
 
-# Check if the commit hashes were retrieved successfully
-if not derivre_commit:
-    print("Error retrieving commit hashes. Exiting.")
+# Check if the version was retrieved successfully
+if not derivre_version:
+    print("Error retrieving version. Exiting.")
     sys.exit(1)
 
 # List of Cargo.toml paths to update
@@ -63,10 +66,8 @@ cargo_toml_paths = [
 
 # Update each Cargo.toml file
 for cargo_toml_path in cargo_toml_paths:
-    update_cargo_toml(cargo_toml_path, derivre_commit)
+    update_cargo_toml(cargo_toml_path, "=" + derivre_version)
 
-# Run cargo fetch for each path to update Cargo.lock
-for path in cargo_toml_paths:
-    subprocess.run(["cargo", "fetch", "--manifest-path", path], check=True)
+subprocess.run(["cargo", "check"], check=True)
 
 print("All Cargo.toml files updated and cargo fetch run successfully.")
