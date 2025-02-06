@@ -9,16 +9,16 @@ repository = "https://github.com/guidance-ai/llguidance"
 [dependencies]
 toktrie = { workspace = true }
 derivre = { version = "=0.2.0" }
-serde = { version = "1.0.210", features = ["derive"] }
-serde_json = { version = "1.0.132", features = ["preserve_order"] }
-anyhow = "1.0.90"
+serde = { version = "1.0.217", features = ["derive"] }
+serde_json = { version = "1.0.138", features = ["preserve_order"] }
+anyhow = "1.0.95"
 instant = "0.1.13"
-jsonschema = { version = "0.24.0", default-features = false, optional = true }
-url = "2.5.2"
+jsonschema = { version = "0.24.3", default-features = false, optional = true }
+url = "2.5.4"
 lazy_static = { version = "1.5.0", optional = true }
 regex-syntax = "0.8.5"
-indexmap = "2.6.0"
-referencing = "0.26.1"
+indexmap = "2.7.1"
+referencing = "0.26.2"
 rayon = { version = "1.10.0", optional = true }
 hashbrown = { version = "0.15.2", features = ["serde"] }
 
