@@ -6,7 +6,7 @@ import sys
 import os
 
 pyproject_path = "pyproject.toml"
-cargo_paths = ["parser", "python_ext"]
+cargo_paths = ["parser", "python_ext", "toktrie", "toktrie_hf_tokenizers"]
 version_pattern = r'\nversion\s*=\s*"(\d+\.\d+\.\d+)([^"]*)"'
 
 
@@ -76,7 +76,7 @@ def main():
 
     for p in cargo_paths:
         update_version_in_file(p + "/Cargo.toml", new_version)
-        subprocess.run(["cargo", "check"], check=True, cwd=p)
+    subprocess.run(["cargo", "check"], check=True)
 
     check_in_and_tag(new_version)
 
