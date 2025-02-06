@@ -2,6 +2,9 @@
 name = "llguidance"
 version = "0.6.16"
 edition = "2021"
+license = "MIT"
+description = "Super-fast Structured Outputs"
+repository = "https://github.com/guidance-ai/llguidance"
 
 [dependencies]
 toktrie = { workspace = true }

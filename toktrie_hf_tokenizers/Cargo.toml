@@ -2,6 +2,9 @@
 name = "toktrie_hf_tokenizers"
 version = "0.6.16"
 edition = "2021"
+license = "MIT"
+description = "HuggingFace tokenizers library support for toktrie and llguidance"
+repository = "https://github.com/guidance-ai/llguidance"
 
 [dependencies]
 toktrie = { workspace = true }
