@@ -1086,7 +1086,7 @@ checksum = "4ee93343901ab17bd981295f2cf0026d4ad018c7c31ba84549a4ddbb47a45104"
 
 [[package]]
 name = "llguidance"
-version = "0.6.17"
+version = "0.6.18"
 dependencies = [
  "anyhow",
  "cbindgen",
@@ -1108,7 +1108,7 @@ dependencies = [
 
 [[package]]
 name = "llguidance_py"
-version = "0.6.17"
+version = "0.6.18"
 dependencies = [
  "bytemuck",
  "llguidance",
@@ -2077,7 +2077,7 @@ dependencies = [
 
 [[package]]
 name = "toktrie"
-version = "0.6.17"
+version = "0.6.18"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -2089,7 +2089,7 @@ dependencies = [
 
 [[package]]
 name = "toktrie_hf_tokenizers"
-version = "0.6.17"
+version = "0.6.18"
 dependencies = [
  "anyhow",
  "hashbrown",
