@@ -40,6 +40,7 @@ cd "$TOP"
 if [ "$TEST_RUST" = 1 ] ; then
     cd "$TOP"
     cargo fmt --check
+    ./scripts/cbindgen.sh --check
 
     cargo build --locked
     cargo test

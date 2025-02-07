@@ -1,41 +1,9 @@
-extern crate cbindgen;
-
 use std::env;
 
 fn main() {
-    let crate_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
+    println!("cargo:rerun-if-changed=llguidance.h");
 
-    let mut config = cbindgen::Config::default();
-    config.language = cbindgen::Language::C;
-    config.cpp_compat = true;
-    config.usize_is_size_t = true; // not exposed as .with_*() method
+    let copy_path = format!("{}/../../../llguidance.h", env::var("OUT_DIR").unwrap());
 
-    println!("cargo:rerun-if-changed=src/ffi.rs");
-
-    let has_cargo_lock = std::fs::metadata("Cargo.lock").is_ok();
-
-    cbindgen::Builder::new()
-        .with_config(config)
-        .with_include_guard("LLGUIDANCE_H")
-        .with_crate(crate_dir)
-        .rename_item("ParserLimits", "LlgParserLimits")
-        .generate()
-        .map_or_else(
-            |error| match error {
-                cbindgen::Error::ParseSyntaxError { .. } => {}
-                e => panic!("{:?}", e),
-            },
-            |bindings| {
-                bindings.write_to_file("llguidance.h");
-                bindings.write_to_file(format!(
-                    "{}/../../../llguidance.h",
-                    env::var("OUT_DIR").unwrap()
-                ));
-            },
-        );
-
-    // cbindgen generates this file during 'cargo publish' and publish fails
-    if !has_cargo_lock {
-        let _ = std::fs::remove_file("Cargo.lock");
-    }
+    std::fs::copy("llguidance.h", copy_path).unwrap();
 }
