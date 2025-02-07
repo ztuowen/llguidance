@@ -10,8 +10,8 @@ use crate::api::{
 use crate::earley::lexerspec::{token_ranges_to_string, LexemeClass};
 use crate::substring::substring;
 use crate::HashMap;
-use crate::{lark_to_llguidance, loginfo, JsonCompileOptions, Logger};
 use crate::Instant;
+use crate::{lark_to_llguidance, loginfo, JsonCompileOptions, Logger};
 use anyhow::{anyhow, bail, ensure, Result};
 use derivre::{ExprRef, JsonQuoteOptions, RegexAst, RegexBuilder};
 use toktrie::TokEnv;
