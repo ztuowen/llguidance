@@ -219,7 +219,7 @@ impl BiasComputer for SlicedBiasComputer {
                     } else {
                         // assert!(slice.regex == "");
                         let c0 = if DEBUG { set.num_set() } else { 0 };
-                        let t0 = std::time::Instant::now();
+                        let t0 = crate::Instant::now();
                         slice.trie.add_bias(rec, &mut set, start);
                         let us = t0.elapsed().as_micros() as usize;
                         rec.metrics_mut().slicer_leftover_us += us;

@@ -11,10 +11,9 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use crate::HashSet;
+use crate::{HashSet, Instant};
 use anyhow::{bail, ensure, Result};
 use derivre::{AlphabetInfo, NextByte, RegexAst, StateID};
-use instant::Instant;
 use serde::{Deserialize, Serialize};
 use toktrie::{
     parse_numeric_token, Recognizer, SimpleVob, TokEnv, TokTrie, TokenId, INVALID_TOKEN,

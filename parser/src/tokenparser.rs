@@ -5,10 +5,9 @@ use crate::{
     earley::{
         grammars_from_json, BiasComputer, DefaultBiasComputer, Parser, ParserError, ParserStats,
     },
-    infoln, panic_utils, warn, Logger,
+    infoln, panic_utils, warn, Instant, Logger,
 };
 use anyhow::{ensure, Result};
-use instant::Instant;
 use serde_json::json;
 use toktrie::{InferenceCapabilities, SimpleVob, TokEnv, TokenId, INVALID_TOKEN};
 
@@ -16,7 +15,7 @@ use toktrie::{InferenceCapabilities, SimpleVob, TokEnv, TokenId, INVALID_TOKEN};
 pub struct TokenParser {
     pub token_env: TokEnv,
     pub parser: Parser,
-    pub compute_mask_start_time: instant::Instant,
+    pub compute_mask_start_time: Instant,
     pub last_bias_time: Duration,
     pub inference_caps: InferenceCapabilities,
     pub logger: Logger,
@@ -78,7 +77,7 @@ impl TokenParser {
             "backtrack requires ff_tokens"
         );
 
-        let compute_mask_start_time = instant::Instant::now();
+        let compute_mask_start_time = Instant::now();
         let test_trace = top_grammar.test_trace;
         let max_tokens = top_grammar.max_tokens.unwrap_or(usize::MAX);
         let compiled_grammar = grammars_from_json(
@@ -340,7 +339,7 @@ impl TokenParser {
     // compute_mask() is a top-level method in this file.
     // compute_mask() is called by Constraint::compute_mask().
     pub fn compute_mask(&mut self) -> Result<SimpleVob> {
-        self.compute_mask_start_time = instant::Instant::now();
+        self.compute_mask_start_time = Instant::now();
         let r = self.compute_mask_inner();
         self.parser
             .perf_counters()

@@ -11,9 +11,9 @@ use crate::earley::lexerspec::{token_ranges_to_string, LexemeClass};
 use crate::substring::substring;
 use crate::HashMap;
 use crate::{lark_to_llguidance, loginfo, JsonCompileOptions, Logger};
+use crate::Instant;
 use anyhow::{anyhow, bail, ensure, Result};
 use derivre::{ExprRef, JsonQuoteOptions, RegexAst, RegexBuilder};
-use instant::Instant;
 use toktrie::TokEnv;
 
 fn resolve_rx(rx_refs: &[ExprRef], node: &RegexSpec) -> Result<RegexAst> {

@@ -252,7 +252,7 @@ impl RegexVec {
         mut budget: u64,
     ) -> Result<bool> {
         let budget0 = budget;
-        let t0 = instant::Instant::now();
+        let t0 = crate::Instant::now();
         assert!(self.subsume_possible(state));
         let small = self.get_rx(lexeme_idx);
         let mut res = false;
@@ -639,7 +639,7 @@ impl RegexVec {
 
         // let d0 = self.deriv.num_deriv;
         let c0 = self.exprs.cost();
-        // let t0 = instant::Instant::now();
+        // let t0 = crate::Instant::now();
         // let mut state_size = 0;
 
         for (idx, e) in iter_state(&self.rx_sets, state) {
