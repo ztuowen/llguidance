@@ -31,4 +31,7 @@ fn main() {
                 ));
             },
         );
+
+    // cbindgen generates this file during 'cargo publish' and publish fails
+    let _ = std::fs::remove_file("Cargo.lock");
 }
