@@ -12,6 +12,8 @@ fn main() {
 
     println!("cargo:rerun-if-changed=src/ffi.rs");
 
+    let has_cargo_lock = std::fs::metadata("Cargo.lock").is_ok();
+
     cbindgen::Builder::new()
         .with_config(config)
         .with_include_guard("LLGUIDANCE_H")
@@ -33,5 +35,7 @@ fn main() {
         );
 
     // cbindgen generates this file during 'cargo publish' and publish fails
-    let _ = std::fs::remove_file("Cargo.lock");
+    if !has_cargo_lock {
+        let _ = std::fs::remove_file("Cargo.lock");
+    }
 }
