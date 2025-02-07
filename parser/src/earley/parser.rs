@@ -11,9 +11,9 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+use crate::HashSet;
 use anyhow::{bail, ensure, Result};
 use derivre::{AlphabetInfo, NextByte, RegexAst, StateID};
-use hashbrown::HashSet;
 use instant::Instant;
 use serde::{Deserialize, Serialize};
 use toktrie::{
@@ -1080,7 +1080,7 @@ impl ParserState {
         if check_lexer_max_tokens {
             let row_idx = self.num_rows() - 1;
 
-            let mut pop_classes = HashSet::new();
+            let mut pop_classes = HashSet::default();
             let mut stack_ptr = self.rows[row_idx].grammar_stack_ptr;
             while stack_ptr.as_usize() > 0 {
                 let grm_top = &self.scratch.grammar_stack[stack_ptr.as_usize()];

@@ -1,6 +1,6 @@
+use crate::HashMap;
 use anyhow::{anyhow, Context, Result};
 use derivre::{JsonQuoteOptions, RegexAst};
-use hashbrown::HashMap;
 use indexmap::IndexMap;
 use referencing::Retrieve;
 use serde_json::{json, Value};
@@ -119,7 +119,7 @@ impl Compiler {
         Self {
             builder: GrammarBuilder::new(),
             options,
-            definitions: HashMap::new(),
+            definitions: HashMap::default(),
             pending_definitions: vec![],
             any_cache: None,
             string_cache: None,
@@ -460,7 +460,7 @@ impl Compiler {
             }
         }
         let opener = self.builder.string("{");
-        let inner = self.ordered_sequence(&items, false, &mut HashMap::new());
+        let inner = self.ordered_sequence(&items, false, &mut HashMap::default());
         let closer = self.builder.string("}");
         Ok(self.builder.join(&[opener, inner, closer]))
     }

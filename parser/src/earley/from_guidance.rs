@@ -9,10 +9,10 @@ use crate::api::{
 };
 use crate::earley::lexerspec::{token_ranges_to_string, LexemeClass};
 use crate::substring::substring;
+use crate::HashMap;
 use crate::{lark_to_llguidance, loginfo, JsonCompileOptions, Logger};
 use anyhow::{anyhow, bail, ensure, Result};
 use derivre::{ExprRef, JsonQuoteOptions, RegexAst, RegexBuilder};
-use hashbrown::HashMap;
 use instant::Instant;
 use toktrie::TokEnv;
 
@@ -105,7 +105,7 @@ fn grammar_from_json(
     ctx: &mut CompileCtx,
     mut input: GrammarWithLexer,
 ) -> Result<(SymIdx, LexemeClass)> {
-    let mut local_grammar_mapping = HashMap::new();
+    let mut local_grammar_mapping = HashMap::default();
     let mut additional_grammars = vec![];
 
     if input.json_schema.is_some() || input.lark_grammar.is_some() {
@@ -406,7 +406,7 @@ pub fn grammars_from_json(
         limits,
         lexer_spec: LexerSpec::new()?,
         grammar: Grammar::new(None),
-        grammar_by_idx: HashMap::new(),
+        grammar_by_idx: HashMap::default(),
         grammar_roots: vec![(SymIdx::BOGUS, LexemeClass::ROOT); input.grammars.len()],
     };
 

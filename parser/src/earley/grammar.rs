@@ -1,7 +1,7 @@
 use super::lexerspec::{LexemeClass, LexemeIdx, LexerSpec};
 use crate::api::{GenGrammarOptions, GrammarId};
+use crate::HashMap;
 use anyhow::{bail, ensure, Result};
-use hashbrown::HashMap;
 use std::{fmt::Debug, hash::Hash};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -307,7 +307,7 @@ impl Grammar {
             }
         }
 
-        let mut repl = hashbrown::HashMap::new();
+        let mut repl = crate::HashMap::default();
 
         for sym in &self.symbols {
             if self.is_special_symbol(sym) {
@@ -418,7 +418,7 @@ impl Grammar {
         ctx: &HashMap<GrammarId, (SymIdx, LexemeClass)>,
     ) -> Result<()> {
         let mut rules = vec![];
-        let mut temperatures: HashMap<LexemeClass, f32> = HashMap::new();
+        let mut temperatures: HashMap<LexemeClass, f32> = HashMap::default();
         for sym in &mut self.symbols {
             if let Some(opts) = &sym.gen_grammar {
                 if let Some((idx, cls)) = ctx.get(&opts.grammar).cloned() {
@@ -799,7 +799,7 @@ impl CGrammar {
             lexeme: None,
         });
 
-        let mut sym_map = hashbrown::HashMap::new();
+        let mut sym_map = crate::HashMap::default();
 
         assert!(grammar.symbols.len() < u16::MAX as usize - 10);
 

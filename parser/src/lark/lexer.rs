@@ -1,8 +1,8 @@
 use std::fmt::Display;
 
+use crate::HashMap;
 use anyhow::{bail, Result};
 use derivre::RegexAst;
-use hashbrown::HashMap;
 use serde_json::{Deserializer, Value};
 
 use crate::{
@@ -126,7 +126,7 @@ pub fn lex_lark(input: &str) -> Result<Vec<Lexeme>> {
     let cls = spec
         .new_lexeme_class(RegexAst::Regex(comment_or_ws))
         .unwrap();
-    let mut lexeme_idx_to_token = HashMap::new();
+    let mut lexeme_idx_to_token = HashMap::default();
     lexeme_idx_to_token.insert(spec.skip_id(cls), Token::SKIP);
     for (token, literal) in Token::LITERAL_TOKENS {
         let l = spec

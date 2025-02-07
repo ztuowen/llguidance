@@ -1,6 +1,6 @@
+use crate::HashMap;
 use anyhow::{bail, ensure, Result};
 use derivre::RegexAst;
-use hashbrown::HashMap;
 use std::{ops::RangeInclusive, sync::atomic::AtomicU32};
 
 use crate::api::{
@@ -37,7 +37,7 @@ impl RegexBuilder {
     pub fn new() -> Self {
         Self {
             nodes: vec![],
-            node_ids: HashMap::new(),
+            node_ids: HashMap::default(),
         }
     }
 
@@ -183,13 +183,13 @@ impl GrammarBuilder {
                     ..NodeProps::default()
                 },
             },
-            strings: HashMap::new(),
+            strings: HashMap::default(),
             curr_grammar_id: 0,
-            node_refs: HashMap::new(),
+            node_refs: HashMap::default(),
             nodes: vec![],
             regex: RegexBuilder::new(),
-            at_most_cache: HashMap::new(),
-            repeat_exact_cache: HashMap::new(),
+            at_most_cache: HashMap::default(),
+            repeat_exact_cache: HashMap::default(),
         }
     }
 

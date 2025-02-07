@@ -21,7 +21,7 @@ impl<'a> SuffixAutomaton<'a> {
         let init_state = State {
             len: 0,
             link: None,
-            next: HashMap::new(),
+            next: HashMap::default(),
         };
         SuffixAutomaton {
             states: vec![init_state],
@@ -42,7 +42,7 @@ impl<'a> SuffixAutomaton<'a> {
         self.states.push(State {
             len: self.states[self.last].len + 1,
             link: None,
-            next: HashMap::new(),
+            next: HashMap::default(),
         });
 
         let mut p = Some(self.last);
@@ -86,7 +86,7 @@ impl<'a> SuffixAutomaton<'a> {
 pub fn substring(builder: &mut RegexBuilder, chunks: Vec<&str>) -> Result<ExprRef> {
     let sa = SuffixAutomaton::from_string(chunks);
     let mut state_stack = vec![0];
-    let mut node_cache: HashMap<usize, ExprRef> = HashMap::new();
+    let mut node_cache: HashMap<usize, ExprRef> = HashMap::default();
 
     let empty = ExprRef::EMPTY_STRING;
 

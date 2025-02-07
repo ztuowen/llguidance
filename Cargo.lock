@@ -41,12 +41,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "allocator-api2"
-version = "0.2.21"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "683d7910e743518b0e34f1186f92494becacb047c7b6bf616c96772180fef923"
-
-[[package]]
 name = "anstream"
 version = "0.6.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -420,9 +414,9 @@ dependencies = [
 
 [[package]]
 name = "derivre"
-version = "0.2.0"
+version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d7405aab1d6da4bd0fb3bd6b217745d78f54b9d4412b7c5471d5f4332aee6139"
+checksum = "7fb2db5b53f6bd2423868d513a2ebc38deb27392513bc053a87ecb883bd90f67"
 dependencies = [
  "ahash",
  "anyhow",
@@ -555,12 +549,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3f9eec918d3f24069decb9af1554cad7c880e2da24a9afd88aca000531ab82c1"
 
 [[package]]
-name = "foldhash"
-version = "0.1.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a0d2fde1f7b3d48b8395d5f2de76c18a528bd6a9cdde438df747bfcba3e05d6f"
-
-[[package]]
 name = "foreign-types"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -666,12 +654,6 @@ name = "hashbrown"
 version = "0.15.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bf151400ff0baff5465007dd2f3e717f3fe502074ca563069ce3a6629d07b289"
-dependencies = [
- "allocator-api2",
- "equivalent",
- "foldhash",
- "serde",
-]
 
 [[package]]
 name = "heck"
@@ -1091,7 +1073,6 @@ dependencies = [
  "anyhow",
  "cbindgen",
  "derivre",
- "hashbrown",
  "indexmap",
  "instant",
  "jsonschema",
@@ -2082,7 +2063,6 @@ dependencies = [
  "anyhow",
  "bytemuck",
  "bytemuck_derive",
- "hashbrown",
  "serde",
  "serde_json",
 ]
@@ -2092,7 +2072,6 @@ name = "toktrie_hf_tokenizers"
 version = "0.6.18"
 dependencies = [
  "anyhow",
- "hashbrown",
  "log",
  "serde",
  "serde_json",

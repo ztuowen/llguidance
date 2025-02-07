@@ -1,6 +1,6 @@
+use crate::{HashMap, HashSet};
 use anyhow::{anyhow, bail, Result};
 use derivre::RegexAst;
-use hashbrown::{HashMap, HashSet};
 use indexmap::{IndexMap, IndexSet};
 use referencing::{Draft, Registry, Resolver, Resource, ResourceRef, Retrieve};
 use serde_json::Value;
@@ -466,8 +466,8 @@ struct SharedContext {
 impl SharedContext {
     fn new() -> Self {
         SharedContext {
-            defs: HashMap::new(),
-            seen: HashSet::new(),
+            defs: HashMap::default(),
+            seen: HashSet::default(),
             n_compiled: 0,
         }
     }
@@ -579,9 +579,9 @@ pub fn build_schema(
 ) -> Result<(Schema, HashMap<String, Schema>)> {
     if let Some(b) = contents.as_bool() {
         if b {
-            return Ok((Schema::Any, HashMap::new()));
+            return Ok((Schema::Any, HashMap::default()));
         } else {
-            return Ok((Schema::false_schema(), HashMap::new()));
+            return Ok((Schema::false_schema(), HashMap::default()));
         }
     }
 

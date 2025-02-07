@@ -24,6 +24,7 @@ mod logging;
 pub use logging::Logger;
 
 pub use derivre;
+pub use derivre::{HashMap, HashSet};
 
 pub mod ffi;
 #[cfg(feature = "rayon")]

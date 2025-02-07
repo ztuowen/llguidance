@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
+use crate::{HashMap, HashSet};
 use anyhow::{anyhow, bail, ensure, Result};
-use hashbrown::{HashMap, HashSet};
 
 use crate::{
     api::{
@@ -31,8 +31,8 @@ struct Grammar {
 impl Default for Grammar {
     fn default() -> Self {
         Self {
-            rules: HashMap::new(),
-            tokens: HashMap::new(),
+            rules: HashMap::default(),
+            tokens: HashMap::default(),
             ignore: vec![],
             llguidance_options: serde_json::Value::Object(serde_json::Map::new()),
         }
@@ -57,9 +57,9 @@ fn compile_lark(parsed: ParsedLark) -> Result<TopLevelGrammar> {
         additional_grammars: vec![],
         parsed,
         grammar: Arc::new(Grammar::default()),
-        node_ids: HashMap::new(),
-        regex_ids: HashMap::new(),
-        in_progress: HashSet::new(),
+        node_ids: HashMap::default(),
+        regex_ids: HashMap::default(),
+        in_progress: HashSet::default(),
     };
     c.execute()?;
     let mut r = c.builder.finalize()?;

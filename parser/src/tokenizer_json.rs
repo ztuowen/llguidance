@@ -1,5 +1,5 @@
+use crate::HashMap;
 use anyhow::{anyhow, bail, Result};
-use hashbrown::HashMap;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use toktrie::TokTrie;

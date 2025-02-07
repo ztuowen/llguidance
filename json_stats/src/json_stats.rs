@@ -848,12 +848,12 @@ fn main() {
     };
 
     let mut total = TotalStats::default();
-    let mut all_stats = HashMap::new();
-    let mut num_files_by_feature: HashMap<String, usize> = HashMap::new();
-    let mut num_files_by_raw_feature: HashMap<String, usize> = HashMap::new();
+    let mut all_stats: HashMap<String, SchemaRes> = HashMap::default();
+    let mut num_files_by_feature: HashMap<String, usize> = HashMap::default();
+    let mut num_files_by_raw_feature: HashMap<String, usize> = HashMap::default();
     let mut all_file_info = vec![];
     let mut llg_results = vec![];
-    let mut llg_sem_results: HashMap<String, LlgSemanticResult> = HashMap::new();
+    let mut llg_sem_results: HashMap<String, LlgSemanticResult> = HashMap::default();
     let mut llg_totals = json!({});
     let mut all_masks_us = vec![];
     let mut all_ttfm_us = vec![];
