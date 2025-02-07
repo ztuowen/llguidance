@@ -44,12 +44,14 @@ jobs:
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
     environment: pkg
-    needs: [sdist]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Run Rust tests
+        run: ./scripts/test-guidance.sh --rust
 
       - name: Publish to crates.io
         run: ./scripts/ci-publish.py
