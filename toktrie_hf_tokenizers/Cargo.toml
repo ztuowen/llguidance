@@ -1,6 +1,6 @@
 [package]
 name = "toktrie_hf_tokenizers"
-version = "0.6.16"
+version = "0.6.17"
 edition = "2021"
 license = "MIT"
 description = "HuggingFace tokenizers library support for toktrie and llguidance"
