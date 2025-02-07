@@ -1,7 +1,7 @@
 #!/bin/sh
 
 CHECK=0
-if [ "$1" == "--check" ]; then
+if [ "$1" = "--check" ]; then
     CHECK=1
     shift
 fi
