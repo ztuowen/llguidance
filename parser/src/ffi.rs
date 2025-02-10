@@ -103,9 +103,7 @@ impl LlgTokenizer {
             }
             tokens
         } else {
-            let tokenizer_json = unsafe { CStr::from_ptr(init.tokenizer_json) }
-                .to_str()
-                .map_err(|_| anyhow::anyhow!("Invalid UTF-8 in tokenizer_json"))?;
+            let tokenizer_json = unsafe { c_str_to_str(init.tokenizer_json, "tokenizer_json") }?;
             let tokenizer_json = serde_json::from_str(tokenizer_json)
                 .map_err(|e| anyhow::anyhow!("Invalid JSON in tokenizer_json: {e}"))?;
             let mut token_bytes =
@@ -353,26 +351,26 @@ impl LlgCommitResult {
     }
 }
 
-fn new_constraint_regex(init: &LlgConstraintInit, regex: *const c_char) -> Result<Constraint> {
-    let regex = unsafe { CStr::from_ptr(regex) }
+unsafe fn c_str_to_str<'a>(c_str: *const c_char, info: &str) -> Result<&'a str> {
+    CStr::from_ptr(c_str)
         .to_str()
-        .map_err(|_| anyhow::anyhow!("Invalid UTF-8 in regex"))?;
+        .map_err(|_| anyhow::anyhow!("Invalid UTF-8 in {}", info))
+}
+
+fn new_constraint_regex(init: &LlgConstraintInit, regex: *const c_char) -> Result<Constraint> {
+    let regex = unsafe { c_str_to_str(regex, "regex") }?;
     let grammar = TopLevelGrammar::from_regex(RegexNode::Regex(regex.to_string()));
     init.build_constraint(grammar)
 }
 
 fn new_constraint_lark(init: &LlgConstraintInit, lark: *const c_char) -> Result<Constraint> {
-    let lark = unsafe { CStr::from_ptr(lark) }
-        .to_str()
-        .map_err(|_| anyhow::anyhow!("Invalid UTF-8 in lark"))?;
+    let lark = unsafe { c_str_to_str(lark, "lark") }?;
     let grammar = lark_to_llguidance(lark)?;
     init.build_constraint(grammar)
 }
 
 fn new_constraint_json(init: &LlgConstraintInit, json_schema: *const c_char) -> Result<Constraint> {
-    let json_schema = unsafe { CStr::from_ptr(json_schema) }
-        .to_str()
-        .map_err(|_| anyhow::anyhow!("Invalid UTF-8 in json_schema"))?;
+    let json_schema = unsafe { c_str_to_str(json_schema, "json_schema") }?;
     let json_schema = serde_json::from_str(json_schema)
         .map_err(|e| anyhow::anyhow!("Invalid JSON in json_schema: {e}"))?;
     let opts = JsonCompileOptions::default();
@@ -383,9 +381,7 @@ fn new_constraint_json(init: &LlgConstraintInit, json_schema: *const c_char) -> 
 }
 
 fn new_constraint(init: &LlgConstraintInit, grammar_json: *const c_char) -> Result<Constraint> {
-    let grammar_json = unsafe { CStr::from_ptr(grammar_json) }
-        .to_str()
-        .map_err(|_| anyhow::anyhow!("Invalid UTF-8 in grammar_json"))?;
+    let grammar_json = unsafe { c_str_to_str(grammar_json, "grammar_json") }?;
     let grammar: TopLevelGrammar = serde_json::from_str(grammar_json)
         .map_err(|e| anyhow::anyhow!("Invalid JSON in grammar_json: {e}"))?;
     init.build_constraint(grammar)
@@ -396,9 +392,7 @@ fn new_constraint_any(
     constraint_type: *const c_char,
     data: *const c_char,
 ) -> Result<Constraint> {
-    let tp = unsafe { CStr::from_ptr(constraint_type) }
-        .to_str()
-        .map_err(|_| anyhow::anyhow!("Invalid UTF-8 in constraint_type"))?;
+    let tp = unsafe { c_str_to_str(constraint_type, "constraint_type") }?;
     match tp {
         "regex" => new_constraint_regex(init, data),
         "json" | "json_schema" => new_constraint_json(init, data),
@@ -540,7 +534,7 @@ pub extern "C" fn llg_is_stopped(cc: &LlgConstraint) -> bool {
 /// Returns 0 on success and -1 on error (use llg_get_error() to get the exact error).
 /// When 0 is returned, the result is written to *res_p.
 #[no_mangle]
-pub extern "C" fn llg_compute_mask(cc: &mut LlgConstraint, res_p: *mut LlgMaskResult) -> i32 {
+pub extern "C" fn llg_compute_mask(cc: &mut LlgConstraint, res_p: &mut LlgMaskResult) -> i32 {
     if let Some(constraint) = &mut cc.constraint {
         match constraint.compute_mask() {
             Ok(r) => {
@@ -552,7 +546,7 @@ pub extern "C" fn llg_compute_mask(cc: &mut LlgConstraint, res_p: *mut LlgMaskRe
                     is_stop: r.is_stop(),
                     temperature: constraint.temperature,
                 };
-                unsafe { *res_p = r };
+                *res_p = r;
             }
             Err(e) => cc.set_error(&e.to_string()),
         }
@@ -568,7 +562,7 @@ pub extern "C" fn llg_compute_mask(cc: &mut LlgConstraint, res_p: *mut LlgMaskRe
 pub extern "C" fn llg_commit_token(
     cc: &mut LlgConstraint,
     token: LlgToken,
-    res_p: *mut LlgCommitResult,
+    res_p: &mut LlgCommitResult,
 ) -> i32 {
     if let Some(constraint) = &mut cc.constraint {
         let trie = constraint.parser.token_env.tok_trie();
@@ -582,7 +576,7 @@ pub extern "C" fn llg_commit_token(
                 // store it, so it survives until the next call to llg_*()
                 cc.last_commit_result = r;
                 let res = LlgCommitResult::from_commit_result(&cc.last_commit_result);
-                unsafe { *res_p = res };
+                *res_p = res;
             }
             Err(e) => cc.set_error(&e.to_string()),
         }
@@ -757,12 +751,7 @@ fn build_stop_controller(
     let stop_rx = if stop_rx.is_null() {
         None
     } else {
-        Some(
-            unsafe { CStr::from_ptr(stop_rx) }
-                .to_str()
-                .map_err(|_| anyhow::anyhow!("Invalid UTF-8 in stop_rx"))?
-                .to_string(),
-        )
+        Some(unsafe { c_str_to_str(stop_rx, "stop_rx") }?.to_string())
     };
     StopController::new(
         tokenizer.token_env.clone(),
@@ -815,12 +804,12 @@ pub extern "C" fn llg_new_stop_controller(
 pub extern "C" fn llg_stop_commit_token(
     stop_ctrl: &mut LlgStopController,
     token: u32,
-    output_len_p: *mut usize,
-    is_stopped_p: *mut bool,
+    output_len_p: &mut usize,
+    is_stopped_p: &mut bool,
 ) -> *const c_char {
     let r = stop_ctrl.stop_controller.commit_token(token);
-    unsafe { *output_len_p = r.len() };
-    unsafe { *is_stopped_p = stop_ctrl.stop_controller.is_stopped() };
+    *output_len_p = r.len();
+    *is_stopped_p = stop_ctrl.stop_controller.is_stopped();
     stop_ctrl.last_result = format!("{r}\0");
     stop_ctrl.last_result.as_ptr() as *const c_char
 }
