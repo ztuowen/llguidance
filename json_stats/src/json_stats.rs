@@ -6,14 +6,14 @@ use llguidance::{
     earley::{
         perf::{num_with_commas, ParserPerfCounters},
         regexvec::LexerStats,
+        XorShift,
     },
     toktrie::{InferenceCapabilities, TokEnv},
-    Constraint, JsonCompileOptions, ParserFactory, TokenParser,
+    Constraint, HashMap, JsonCompileOptions, ParserFactory, TokenParser,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::{
-    collections::HashMap,
     fs::File,
     io::{Read, Write},
     sync::{atomic::AtomicUsize, Arc},
@@ -191,6 +191,9 @@ struct LlgResult {
     ff_tokens_us: Vec<usize>,
 
     #[serde(skip)]
+    all_hash: Vec<u64>,
+
+    #[serde(skip)]
     all_mask_us_a: Vec<usize>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -261,6 +264,7 @@ struct TestEnv {
     ref_factory: Arc<ParserFactory>,
     file_name: String,
     perf_counters: Arc<ParserPerfCounters>,
+    hash_rnd: Arc<ahash::RandomState>,
 }
 
 fn json_sum(curr: &mut Value, v: &Value) {
@@ -355,8 +359,24 @@ impl TestEnv {
         }
 
         let m = parser.compute_mask()?; // .unwrap_or_else(|_| trie.alloc_token_set());
+
+        // let hash = 0;
+
+        let hash = self.hash_rnd.hash_one(m.as_slice());
+
+        // use ring::digest::{digest, SHA256};
+        // let hash = digest(&SHA256, bytemuck::cast_slice(m.as_slice()));
+        // let hash = u64::from_be_bytes(hash.as_ref()[0..8].try_into().unwrap());
+
+        // use sha2::{Sha256, Digest};
+        // let mut hasher = Sha256::new();
+        // hasher.update(bytemuck::cast_slice(m.as_slice()));
+        // let hash = u64::from_be_bytes(hasher.finalize().as_slice()[0..8].try_into().unwrap());
+
         let mask_us = t0.elapsed().as_micros() as usize;
         let pstats = parser.last_step_stats();
+
+        stats.all_hash.push(hash);
 
         if let Some(ref_parser) = &mut ref_parser {
             let m2 = ref_parser.compute_mask()?;
@@ -830,6 +850,7 @@ fn main() {
     let t0 = std::time::Instant::now();
     let par = num_threads > 1;
     let perf_counters = Arc::new(ParserPerfCounters::new());
+    let hash_rnd = Arc::new(ahash::RandomState::new());
     let do_file = |file: &String| {
         let env = TestEnv {
             tok_env: tok_env.clone(),
@@ -838,6 +859,7 @@ fn main() {
             file_name: file.to_string(),
             cli: options.clone(),
             perf_counters: perf_counters.clone(),
+            hash_rnd: hash_rnd.clone(),
         };
         env.run_test()
     };
@@ -858,6 +880,8 @@ fn main() {
     let mut all_masks_us = vec![];
     let mut all_ttfm_us = vec![];
     let mut validation_errors = vec![];
+
+    total.mask_cache = mask_cache_stats(&results);
 
     for (file, s) in files.iter().zip(results.into_iter()) {
         all_stats.insert(file.clone(), s.clone());
@@ -1086,6 +1110,70 @@ fn main() {
     }
 }
 
+fn mask_cache_stats(results: &[SchemaRes]) -> Value {
+    let batch_size = 100;
+    let hash_size = 1000;
+
+    let mut rng = XorShift::new(1234);
+    let mut results = results
+        .iter()
+        .filter_map(|r| r.llg_result.as_ref())
+        .map(|r| {
+            let mut v = r.all_hash.clone();
+            v.reverse();
+            v
+        })
+        .filter(|v| v.len() > 0)
+        .collect::<Vec<_>>();
+    for idx in 0..results.len() {
+        let idx2 = rng.from_range(0..results.len());
+        results.swap(idx, idx2);
+    }
+
+    let mut on_gpu = HashMap::default();
+    let mut left = results.drain(0..batch_size).collect::<Vec<_>>();
+    let mut num_hits = 0;
+    let mut num_misses = 0;
+    let mut round = 0;
+
+    while left.len() > 0 {
+        let curr_batch = left
+            .iter_mut()
+            .map(|e| e.pop().unwrap())
+            .collect::<Vec<_>>();
+        for h in curr_batch {
+            if on_gpu.contains_key(&h) {
+                num_hits += 1;
+            } else {
+                num_misses += 1;
+                on_gpu.insert(h, round);
+            }
+        }
+        if on_gpu.len() > hash_size {
+            let mut to_delete = on_gpu.iter().map(|(k, v)| (*k, *v)).collect::<Vec<_>>();
+            to_delete.sort_by(|a, b| a.1.cmp(&b.1));
+            for (k, _) in to_delete.drain(0..on_gpu.len() - hash_size) {
+                on_gpu.remove(&k);
+            }
+            assert!(on_gpu.len() <= hash_size);
+        }
+        left.retain(|e| e.len() > 0);
+        while left.len() < batch_size && results.len() > 0 {
+            left.push(results.pop().unwrap());
+        }
+        round += 1;
+    }
+
+    json!({
+        "num_hits": num_hits,
+        "num_misses": num_misses,
+        "hit_rate_1000": 1000 * num_hits / (num_hits + num_misses),
+        "num_rounds": round,
+        "batch_size": batch_size,
+        "hash_size": hash_size,
+    })
+}
+
 fn save_json_to_file<T: Serialize>(filename: &str, data: &T) {
     let mut file =
         File::create(filename).expect(format!("Unable to create file {}", filename).as_str());
@@ -1147,6 +1235,7 @@ struct TotalStats {
     stripped_size: usize,
     llg: LlgTotalStats,
     llg_json: Value,
+    mask_cache: Value,
 }
 
 fn read_file_to_string(filename: &str) -> String {
