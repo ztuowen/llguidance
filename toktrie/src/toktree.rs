@@ -322,9 +322,8 @@ impl TokTrie {
     }
 
     fn node_offset(&self, n: &TrieNode) -> usize {
-        let off = unsafe { (n as *const TrieNode).offset_from(self.root() as *const TrieNode) };
-        assert!(off >= 0);
-        let off = off as usize;
+        let off = (n as *const _ as usize - self.root() as *const _ as usize)
+            / std::mem::size_of::<TrieNode>();
         assert!(off < self.nodes.len());
         off
     }

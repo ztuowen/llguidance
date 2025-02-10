@@ -440,11 +440,7 @@ impl Scratch {
     // usually in preparation for adding Earley items.
     #[inline(always)]
     fn ensure_items(&mut self, n: usize) {
-        if self.items.len() < n {
-            let missing = n - self.items.len();
-            self.items.reserve(missing);
-            unsafe { self.items.set_len(n) }
-        }
+        self.items.reserve(n.saturating_sub(self.items.len()));
     }
 
     fn push_grammar_stack(&mut self, node: GrammarStackNode) {
@@ -463,12 +459,11 @@ impl Scratch {
     // is assumed the caller knows that this Earley item will be unique.
     #[inline(always)]
     fn just_add(&mut self, item: Item, _origin_item_idx: usize, info: &str) {
-        self.ensure_items(self.row_end + 1);
-        // SAFETY: we just ensured that there is enough space
-        unsafe {
-            self.items.as_mut_ptr().add(self.row_end).write(item);
+        if self.items.len() == self.row_end {
+            self.items.push(item);
+        } else {
+            self.items[self.row_end] = item;
         }
-        // self.items[self.row_end] = item;
         if self.definitive {
             debug!(
                 "      addu: {} ({})",
@@ -800,8 +795,8 @@ impl ParserState {
 
     #[inline(always)]
     fn pop_lexer_states(&mut self, n: usize) {
-        assert!(self.lexer_stack.len() > n);
-        unsafe { self.lexer_stack.set_len(self.lexer_stack.len() - n) }
+        self.lexer_stack
+            .truncate(self.lexer_stack.len().saturating_sub(n));
     }
 
     #[allow(dead_code)]
@@ -1519,7 +1514,7 @@ impl ParserState {
         if n == 0 {
             return false;
         }
-        self.scratch.ensure_items(src.end + n + 100);
+        self.scratch.ensure_items(src.end + n + 10);
         self.scratch.new_row(src.end);
         self.scratch.push_lexeme_idx = lexeme.idx;
 
@@ -1561,7 +1556,7 @@ impl ParserState {
     fn scan(&mut self, lexeme: &Lexeme) -> bool {
         let row_idx = self.num_rows() - 1;
         let items = self.rows[row_idx].item_indices();
-        self.scratch.ensure_items(items.end + items.len() + 100);
+        self.scratch.ensure_items(items.end + items.len() + 10);
         self.scratch.new_row(items.end);
         self.scratch.push_lexeme_idx = lexeme.idx;
 

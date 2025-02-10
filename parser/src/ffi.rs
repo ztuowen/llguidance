@@ -548,7 +548,7 @@ pub extern "C" fn llg_compute_mask(cc: &mut LlgConstraint, res_p: *mut LlgMaskRe
                     sample_mask: r
                         .sample_mask
                         .as_ref()
-                        .map_or(std::ptr::null(), |m| unsafe { m.as_ptr() }),
+                        .map_or(std::ptr::null(), |m| m.as_ptr()),
                     is_stop: r.is_stop(),
                     temperature: constraint.temperature,
                 };

@@ -219,7 +219,6 @@ impl RegexVec {
     #[inline(always)]
     pub fn transition(&mut self, state: StateID, b: u8) -> StateID {
         let idx = self.alpha.map_state(state, b);
-        // let new_state = unsafe { std::ptr::read(self.state_table_ptr.add(idx)) };
         let new_state = self.state_table[idx];
         if new_state != StateID::MISSING {
             new_state

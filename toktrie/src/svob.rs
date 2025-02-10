@@ -120,7 +120,7 @@ impl SimpleVob {
         r
     }
 
-    pub unsafe fn as_ptr(&self) -> *const u32 {
+    pub fn as_ptr(&self) -> *const u32 {
         self.data.as_ptr()
     }
 
