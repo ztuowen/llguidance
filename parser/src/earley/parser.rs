@@ -716,7 +716,16 @@ impl ParserState {
     }
 
     pub fn has_pending_lexeme_bytes(&self) -> bool {
-        self.curr_row_bytes().len() > 0
+        let row_idx = self.num_rows() - 1;
+        for back in self.lexer_stack.iter().rev() {
+            if back.row_idx as usize != row_idx {
+                break;
+            }
+            if back.byte.is_some() {
+                return true;
+            }
+        }
+        false
     }
 
     // Does the parse succeed in this Earley set?
