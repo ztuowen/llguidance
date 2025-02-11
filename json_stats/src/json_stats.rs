@@ -106,6 +106,10 @@ pub struct CliOptions {
     #[arg(long, default_value_t = false)]
     only_invalid: bool,
 
+    /// Treat all schemas as { "type": "object" }
+    #[arg(long)]
+    ignore_schema: bool,
+
     /// .json files or folders with .json files
     #[arg(value_name = "FILES")]
     files: Vec<String>,
@@ -398,15 +402,16 @@ impl TestEnv {
         stats.all_mask_us.push(mask_us);
 
         // && pstats.lexer_cost < 7 * us as u64
-        if self.cli.csv && mask_us > 1000 {
+        if self.cli.csv && mask_us > 300 {
             static CSV_LINE: AtomicUsize = AtomicUsize::new(0);
             let line_no = CSV_LINE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             if line_no == 0 {
-                println!("MASK,us,lexer_cost,slices,items,rows,cached_rows,trie_nodes,allowed_tokens,est_time");
+                println!("MASK,file,us,lexer_cost,slices,items,rows,cached_rows,trie_nodes,allowed_tokens,est_time");
             }
             println!(
-                "{},{},{},{},{},{},{},{},{},{}",
+                "{},{},{},{},{},{},{},{},{},{},{}",
                 if mask_us > 1000 { "SLOW" } else { "OK" },
+                stats.id,
                 mask_us,
                 pstats.lexer_cost,
                 pstats.slices_applied,
@@ -515,7 +520,7 @@ impl TestEnv {
         }
 
         if parser.is_accepting() {
-            if !t.valid {
+            if !t.valid && !self.cli.ignore_schema {
                 bail!(
                     "incorrect accept; expected {}",
                     t.rust_error
@@ -556,10 +561,11 @@ impl TestEnv {
         r
     }
 
-    fn run_llg_compile(&self, test_file: &JsonTest) -> LlgResult {
+    fn run_llg_compile(&self, id: &str, test_file: &JsonTest) -> LlgResult {
         let mut opts = JsonCompileOptions::default();
         opts.whitespace_flexible = !self.cli.compact;
         let mut res = LlgResult::default();
+        res.id = id.to_string();
 
         let all_tests = test_file
             .tests
@@ -577,7 +583,12 @@ impl TestEnv {
         }
 
         let t0 = std::time::Instant::now();
-        let schema = opts.json_to_llg_no_validate(test_file.schema.clone());
+        let schema = if self.cli.ignore_schema {
+            json!({"type": "object"})
+        } else {
+            test_file.schema.clone()
+        };
+        let schema = opts.json_to_llg_no_validate(schema);
         res.json_compile_us = t0.elapsed().as_micros() as usize;
 
         let mut schema = match schema {
@@ -756,8 +767,7 @@ impl TestEnv {
         }
 
         if self.cli.llg_compile {
-            let mut llg = self.run_llg_compile(&test_file);
-            llg.id = stats.file_info.id.clone();
+            let llg = self.run_llg_compile(&stats.file_info.id, &test_file);
             stats.llg_result = Some(llg);
         } else {
             save_json_to_file(file_name, &test_file);
@@ -1131,9 +1141,11 @@ fn mask_cache_stats(results: &[SchemaRes]) -> Value {
     }
 
     let mut on_gpu = HashMap::default();
-    let mut left = results.drain(0..batch_size).collect::<Vec<_>>();
-    let mut num_hits = 0;
-    let mut num_misses = 0;
+    let mut left = results
+        .drain(0..std::cmp::min(results.len(), batch_size))
+        .collect::<Vec<_>>();
+    let mut num_hits: usize = 0;
+    let mut num_misses: usize = 0;
     let mut round = 0;
 
     while left.len() > 0 {
@@ -1167,7 +1179,7 @@ fn mask_cache_stats(results: &[SchemaRes]) -> Value {
     json!({
         "num_hits": num_hits,
         "num_misses": num_misses,
-        "hit_rate_1000": 1000 * num_hits / (num_hits + num_misses),
+        "hit_rate_1000": 1000 * num_hits / (num_hits + num_misses + 1),
         "num_rounds": round,
         "batch_size": batch_size,
         "hash_size": hash_size,
