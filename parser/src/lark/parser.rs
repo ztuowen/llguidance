@@ -138,7 +138,14 @@ impl Parser {
             let key = self.expect_token(Token::Rule)?.value;
             match key.as_str() {
                 "capture" => {
-                    rule.capture_name = Some(rule.name.clone());
+                    if self.has_token(Token::Equals) {
+                        self.expect_token(Token::Equals)?;
+                        let lexeme = self.expect_token(Token::String)?;
+                        let string = self.parse_simple_string(&lexeme)?;
+                        rule.capture_name = Some(string);
+                    } else if rule.capture_name.is_none() {
+                        rule.capture_name = Some(rule.name.clone());
+                    }
                 }
                 "lazy" => {
                     if rule.stop.is_none() {
