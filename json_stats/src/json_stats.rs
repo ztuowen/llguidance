@@ -1,5 +1,6 @@
 use anyhow::{anyhow, bail, Result};
 use clap::Parser;
+use indexmap::IndexMap;
 use json_stats::SchemaStats;
 use jsonschema::Validator;
 use llguidance::{
@@ -25,7 +26,7 @@ struct DummyResolver {}
 impl jsonschema::Retrieve for DummyResolver {
     fn retrieve(
         &self,
-        uri: &jsonschema::Uri<&str>,
+        uri: &jsonschema::Uri<String>,
     ) -> std::result::Result<Value, Box<dyn std::error::Error + Send + Sync>> {
         Err(anyhow!("external resolver disabled (url: {})", uri).into())
     }
@@ -885,7 +886,7 @@ fn main() {
     let mut num_files_by_raw_feature: HashMap<String, usize> = HashMap::default();
     let mut all_file_info = vec![];
     let mut llg_results = vec![];
-    let mut llg_sem_results: HashMap<String, LlgSemanticResult> = HashMap::default();
+    let mut llg_sem_results: IndexMap<String, LlgSemanticResult> = IndexMap::default();
     let mut llg_totals = json!({});
     let mut all_masks_us = vec![];
     let mut all_ttfm_us = vec![];
