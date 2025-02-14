@@ -160,6 +160,8 @@ does not include the suffix, but the captures for upper-level rules do,
 and there is never any backtracking.
 
 For both `stop` and `suffix`, the value can be any terminal (string literal, regex, or uppercase name).
+In either case you can also specify `stop_capture="my_name"` which will
+cause the string matching `stop` or `suffix` to be captured as `my_name`.
 
 If you don't care about captures, you can just put `lazy` on the rule.
 It is most useful when the regular expression ends with some delimiter.

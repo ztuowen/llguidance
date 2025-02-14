@@ -973,7 +973,7 @@ fn test_suffix_tool() {
         r#"
             start: "<tool_name>" name "<tool_data>" data "</tool_data>"
             name[capture]: name_inner
-            name_inner[capture, suffix="</tool_name>"]: /.*/
+            name_inner[capture, stop_capture="stop_c", suffix="</tool_name>"]: /.*/
             data[capture]: %json {
                 "properties": {
                     "foo": { "type": "string" }
@@ -992,6 +992,7 @@ fn test_suffix_tool() {
         ],
     );
     check_capture(&c, "data", "{\"foo\": \"bar\"}");
+    check_capture(&c, "stop_c", "</tool_name>");
     check_capture(&c, "name_inner", "foo<bar>");
     check_capture(&c, "name", "foo<bar></tool_name>");
 }

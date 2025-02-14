@@ -90,6 +90,7 @@ impl Parser {
             max_tokens: None,
             temperature: None,
             capture_name: None,
+            stop_capture_name: None,
         };
 
         if self.has_token(Token::LBracket) {
@@ -163,6 +164,15 @@ impl Parser {
                                 "Cannot have multiple stop/suffix conditions"
                             );
                             rule.stop = Some(value);
+                        }
+                        "stop_capture" => {
+                            let lexeme = self.expect_token(Token::String)?;
+                            let string = self.parse_simple_string(&lexeme)?;
+                            ensure!(
+                                rule.stop_capture_name.is_none(),
+                                "Cannot have multiple stop_capture names"
+                            );
+                            rule.stop_capture_name = Some(string);
                         }
                         "suffix" => {
                             let value = self.parse_value()?;

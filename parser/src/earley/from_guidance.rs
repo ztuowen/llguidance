@@ -256,16 +256,8 @@ fn grammar_from_json(
                 if let Some(t) = data.temperature {
                     symprops.temperature = t;
                 }
-                if data.stop_capture_name.is_some() {
-                    symprops.stop_capture_name = data.stop_capture_name.clone();
-                    let wrap_props = symprops.for_wrapper();
-                    let wrap_name = format!("stop_wrap_{}", grm.sym_name(lhs));
-                    let wrap_sym = grm.fresh_symbol_ext(&wrap_name, wrap_props);
-                    grm.make_terminal(wrap_sym, idx, &lexer_spec)?;
-                    grm.add_rule(lhs, vec![wrap_sym])?;
-                } else {
-                    grm.make_terminal(lhs, idx, &lexer_spec)?;
-                }
+                symprops.stop_capture_name = data.stop_capture_name.clone();
+                grm.make_terminal(lhs, idx, &lexer_spec)?;
             }
             Node::Lexeme {
                 rx,

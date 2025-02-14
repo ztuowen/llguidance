@@ -1982,7 +1982,12 @@ impl ParserState {
             bytes.push(byte.unwrap());
         }
 
-        Lexeme::new(pre_lexeme.idx, bytes, pre_lexeme.hidden_len, pre_lexeme.is_suffix)
+        Lexeme::new(
+            pre_lexeme.idx,
+            bytes,
+            pre_lexeme.hidden_len,
+            pre_lexeme.is_suffix,
+        )
     }
 
     fn has_forced_bytes(&self, allowed_lexemes: &LexemeSet, bytes: &[u8]) -> bool {

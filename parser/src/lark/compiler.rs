@@ -421,7 +421,7 @@ impl Compiler {
                     } else {
                         RegexSpec::RegexId(stop_id)
                     },
-                    stop_capture_name: None,
+                    stop_capture_name: rule.stop_capture_name.clone(),
                     lazy: Some(rule.is_lazy()),
                     temperature: rule.temperature,
                     is_suffix: Some(rule.suffix.is_some()),
@@ -429,6 +429,10 @@ impl Compiler {
                 props,
             )
         } else {
+            ensure!(
+                rule.stop_capture_name.is_none(),
+                "stop_capture_name requires stop= or suffix="
+            );
             if rule.temperature.is_some() || rule.max_tokens.is_some() {
                 match rule.expansions.single_atom() {
                     Some(Atom::Value(Value::GrammarRef(g))) => {
