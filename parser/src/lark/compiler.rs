@@ -404,7 +404,11 @@ impl Compiler {
             ..Default::default()
         };
 
-        let id = if let Some(stop) = &rule.stop {
+        if rule.stop.is_some() && rule.suffix.is_some() {
+            bail!("stop= and suffix= cannot be used together");
+        }
+
+        let id = if let Some(stop) = rule.stop_like() {
             let rx_id = self.do_token_expansions(&rule.expansions)?;
             let stop_id = self.do_token_atom(&Atom::Value(stop.clone()))?;
             let is_empty = matches!(stop, Value::LiteralString(s, _) if s.is_empty());
@@ -418,8 +422,9 @@ impl Compiler {
                         RegexSpec::RegexId(stop_id)
                     },
                     stop_capture_name: None,
-                    lazy: Some(!is_empty), // follow guidance: "lazy": node.stop_regex != "",
+                    lazy: Some(rule.is_lazy()),
                     temperature: rule.temperature,
+                    is_suffix: Some(rule.suffix.is_some()),
                 },
                 props,
             )

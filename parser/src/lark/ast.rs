@@ -31,6 +31,7 @@ pub struct Rule {
     pub expansions: Expansions,
 
     pub stop: Option<Value>,
+    pub suffix: Option<Value>,
     pub max_tokens: Option<usize>,
     pub temperature: Option<f32>,
     pub capture_name: Option<String>,
@@ -137,3 +138,17 @@ pub enum Value {
 /// Represents an operator.
 #[derive(Debug, Clone)]
 pub struct Op(pub String);
+
+impl Rule {
+    pub fn stop_like(&self) -> Option<&Value> {
+        self.stop.as_ref().or(self.suffix.as_ref())
+    }
+    // follow guidance: "lazy": node.stop_regex != "",
+    pub fn is_lazy(&self) -> bool {
+        match self.stop_like() {
+            Some(Value::LiteralString(s, _)) => !s.is_empty(),
+            Some(_) => true,
+            None => false,
+        }
+    }
+}

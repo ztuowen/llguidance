@@ -45,6 +45,7 @@ pub struct LexemeSpec {
     lazy: bool,
     contextual: bool,
     max_tokens: usize,
+    pub(crate) is_suffix: bool,
     pub(crate) is_skip: bool,
     json_options: Option<JsonQuoteOptions>,
     pub(crate) token_ranges: Vec<RangeInclusive<TokenId>>,
@@ -88,6 +89,9 @@ impl LexemeSpec {
         self.rx.write_to_str(&mut f, max_len, exprset);
         if self.lazy {
             f.push_str(" lazy");
+        }
+        if self.is_suffix {
+            f.push_str(" suffix");
         }
         if self.contextual {
             f.push_str(" contextual");
@@ -263,6 +267,7 @@ impl LexerSpec {
             contextual: false,
             ends_at_eos: false,
             is_skip: false,
+            is_suffix: false,
             json_options: None,
             class: self.current_class,
             max_tokens: usize::MAX,
@@ -277,6 +282,7 @@ impl LexerSpec {
         stop_rx: RegexAst,
         lazy: bool,
         max_tokens: usize,
+        is_suffix: bool,
     ) -> Result<LexemeIdx> {
         let rx = if !matches!(stop_rx, RegexAst::EmptyString) {
             RegexAst::Concat(vec![body_rx, RegexAst::LookAhead(Box::new(stop_rx))])
@@ -289,6 +295,7 @@ impl LexerSpec {
             lazy,
             ends_at_eos: !lazy,
             max_tokens,
+            is_suffix,
             ..self.empty_spec()
         })
     }

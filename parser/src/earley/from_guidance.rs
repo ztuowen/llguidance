@@ -249,6 +249,7 @@ fn grammar_from_json(
                     stop_rx,
                     lazy,
                     max_tokens,
+                    data.is_suffix.unwrap_or(false),
                 )?;
 
                 let symprops = grm.sym_props_mut(lhs);

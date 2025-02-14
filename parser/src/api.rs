@@ -225,8 +225,25 @@ pub struct GenOptions {
     /// If not specified, the gen() is lazy if stop_rx is non-empty.
     pub lazy: Option<bool>,
 
+    /// Treat stop_rx as suffix, i.e., do not hide it from the LLM
+    /// (but do not include it in the capture).
+    pub is_suffix: Option<bool>,
+
     /// Override sampling temperature.
     pub temperature: Option<f32>,
+}
+
+impl Default for GenOptions {
+    fn default() -> Self {
+        GenOptions {
+            body_rx: RegexSpec::Regex(".*".to_string()),
+            stop_rx: RegexSpec::Regex("".to_string()),
+            stop_capture_name: None,
+            lazy: None,
+            is_suffix: None,
+            temperature: None,
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]

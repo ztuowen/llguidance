@@ -106,18 +106,66 @@ with a definition of a Python string, depending on how the model was trained.
 
 These features are mostly for compatibility with [Guidance](https://github.com/guidance-ai/guidance).
 
-`max_tokens`, `temperature` and `stop` can be specified on rules, but the rule body must be a token expression,
-for example: `mygen[stop="\n", max_tokens=10, temperature=0.7]: /.*/`
+`lazy`, `max_tokens`, `temperature`, `suffix` and `stop` can be specified on rules,
+but the rule body must be a terminal.
+Example: `mygen[stop="\n", max_tokens=10, temperature=0.7]: /.*/`
 
-If `stop` is specified (possibly as `""`) the rule is treated as `gen()` in Guidance
-(the lexeme is lazy); otherwise it is treated as `lexeme()` (greedy).
-You can also use `lazy` in place of `stop=""`.
+The `temperature` alters temperature while sampling tokens inside of the terminal,
+while `max_tokens` limits the number of tokens generated for the terminal.
+The `lazy`, `stop` and `suffix` are explained [below](#lazy-lexemes).
 
-Additionally `foo[capture]: ...` will generate a capture group named `foo` in the output,
+Additionally, for all rules, not only ones with terminal bodies,
+`foo[capture]: ...` will generate a capture group named `foo` in the output,
 while `foo[capture="bar"]: ...` will generate a capture group named `bar`.
-The body of the rule can be any expression, not just a token.
 
-### Extended %regex
+#### Lazy lexemes
+
+Specifying `stop=""` will make the EOS token of the model act as the stop token.
+This is only useful if there is some other rule following this rule (otherwise the model will stop on EOS anyways),
+in which case llguidance will try to "backtrack" the EOS token (hide it from the LLM).
+
+If `stop` or `suffix` are specified and non-empty, or if `lazy` is specified, the regex
+will be treated as lazy, meaning it will match as few bytes as possible.
+Consider the following rules:
+
+```lark
+with_stop[capture, stop="<end>"]: /.*/        // capture: "foo"
+outer_stop[capture]: with_stop "<end>"        // capture: "foo<end>"
+outer_stop_problem[capture]: with_stop "bar"  // capture: "foobar"
+
+with_suffix[capture, suffix="<end>"]: /.*/    // capture: "foo"
+outer_suffix[capture]: with_suffix            // capture: "foo<end>"
+
+with_lazy[capture, lazy]: /.*<end>/           // capture: "foo<end>"
+outer_lazy[capture]: with_lazy                // capture: "foo<end>"
+```
+
+Given a string `"foo<end>bar<end>"`, they will all match just the prefix `"foo<end>"`
+(as they are all lazy).
+The captures are listed in the comments.
+
+All the `with_*` rules use the same regex, but `with_stop` will attempt to "hide"
+the final `"<end>"` from the model, by "backtracking" the tokens corresponding to it.
+This is often not supported by server-side LLM infrastructure, and may confuse the model.
+To avoid backtracking, a typical pattern (`outer_stop`) is to have another rule that appends `"<end>"`
+again after `with_stop` that ate it.
+The capture for `outer_stop` has `"<end>"` while the capture `with_stop` does not.
+This requires certain gymnastics in llguidance implementation and may sometimes not work as expected.
+Additionally, if you attempt to add something that is not `"<end>"` after `with_stop`,
+as in `outer_stop_problem`, the backtracking will be necessary.
+
+The `suffix` offers a simpler alternative: the capture for the rule with `suffix`
+does not include the suffix, but the captures for upper-level rules do,
+and there is never any backtracking.
+
+If you don't care about captures, you can just put `lazy` on the rule.
+It is most useful when the regular expression ends with some delimiter.
+If it doesn't, the results may be surprising:
+for example, `foo[lazy]: /.*/` will match only the empty string,
+while `foo[lazy]: /[0-9]+/` will only match a single digit.
+
+
+### Structured %regex
 
 LLGuidance supports [extended regex syntax](https://docs.rs/regex/latest/regex/#syntax) in `/.../`.
 This includes character classes (`/[a-zA-Z]/`), repetition (`/a+/`, `/a*/`, `/a{10,100}/`, `/a{10,}/`, `/a?/`),
@@ -132,7 +180,7 @@ UINT: DIGIT+
 DIGIT: /[0-9]/
 ```
 
-Additionally, extended regex nodes can be defined using `%regex { ... }` syntax.
+Additionally, "structured" regex nodes can be defined using `%regex { ... }` syntax.
 
 #### Substring
 

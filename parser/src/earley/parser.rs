@@ -956,13 +956,7 @@ impl ParserState {
 
     fn add_numeric_token(&mut self, idx: LexemeIdx, tok_bytes: &[u8]) -> Result<()> {
         self.add_bytes_ignoring_lexer(tok_bytes);
-        let pre = PreLexeme {
-            idx,
-            byte: None,
-            byte_next_row: false,
-            hidden_len: 0,
-        };
-        let ok = self.advance_parser(pre);
+        let ok = self.advance_parser(PreLexeme::just_idx(idx));
         ensure!(
             ok,
             "failed to advance parser after adding bytes ignoring lexer"
@@ -1268,6 +1262,7 @@ impl ParserState {
                     byte: Some(b']'),
                     byte_next_row: false,
                     hidden_len: 0,
+                    is_suffix: false,
                 };
                 self.advance_parser(pre)
             } else {
@@ -2027,9 +2022,11 @@ impl ParserState {
         let hidden_bytes = lexeme.hidden_bytes();
         assert!(hidden_bytes.len() == pre_lexeme.hidden_len);
 
-        if self.scratch.definitive {
+        let trace_here = self.scratch.definitive;
+
+        if trace_here {
             trace!(
-                "  hidden_bytes: {} {}",
+                "  hidden_bytes: {} {:?}",
                 self.allowed_lexemes_dbg(added_row_start_state),
                 String::from_utf8_lossy(&hidden_bytes)
             );
@@ -2039,7 +2036,7 @@ impl ParserState {
             self.lexer().possible_lexemes(added_row_start_state),
             &hidden_bytes,
         ) {
-            if self.scratch.definitive {
+            if trace_here {
                 trace!("  hidden forced");
             }
             let mut lexer_state = added_row_start_state;
@@ -2051,7 +2048,7 @@ impl ParserState {
                 match self
                     .shared_box
                     .lexer_mut()
-                    .advance(lexer_state, b, self.scratch.definitive)
+                    .advance(lexer_state, b, trace_here)
                 {
                     LexerResult::State(next_state, _) => {
                         lexer_state = next_state;
@@ -2059,7 +2056,7 @@ impl ParserState {
                     LexerResult::SpecialToken(_) => panic!("hidden byte resulted in special token"),
                     LexerResult::Error => panic!("hidden byte failed; {:?}", hidden_bytes),
                     LexerResult::Lexeme(second_lexeme) => {
-                        if self.scratch.definitive {
+                        if trace_here {
                             debug!("hidden bytes lexeme: {:?}", second_lexeme);
                         }
                         assert!(
@@ -2099,6 +2096,9 @@ impl ParserState {
                 self.assert_definitive();
             }
         } else {
+            if trace_here {
+                debug!("  hidden not forced");
+            }
             if self.scratch.definitive {
                 // set it up for matching after backtrack
                 self.lexer_stack.push(LexerState {
@@ -2198,7 +2198,7 @@ impl ParserState {
         if scan_res {
             let mut no_hidden = self.lexer_state_for_added_row(lexeme, transition_byte);
 
-            if pre_lexeme.hidden_len > 0 {
+            if pre_lexeme.hidden_len > 0 && !pre_lexeme.is_suffix {
                 return self.handle_hidden_bytes(no_hidden, lexeme_byte, pre_lexeme);
             } else {
                 if pre_lexeme.byte_next_row && no_hidden.lexer_state.is_dead() {

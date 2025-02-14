@@ -287,9 +287,7 @@ impl GrammarBuilder {
             GenOptions {
                 body_rx: RegexSpec::Regex(regex.to_string()),
                 stop_rx: RegexSpec::Regex(stop_regex.to_string()),
-                stop_capture_name: None,
-                lazy: None,
-                temperature: None,
+                ..Default::default()
             },
             NodeProps::default(),
         )

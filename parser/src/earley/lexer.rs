@@ -37,8 +37,21 @@ pub struct PreLexeme {
     pub byte: Option<u8>,
     /// Does the 'byte' above belong to the next lexeme?
     pub byte_next_row: bool,
+    pub is_suffix: bool,
     /// Length in bytes of the hidden part of the lexeme.
     pub hidden_len: usize,
+}
+
+impl PreLexeme {
+    pub fn just_idx(idx: LexemeIdx) -> Self {
+        PreLexeme {
+            idx,
+            byte: None,
+            byte_next_row: false,
+            is_suffix: false,
+            hidden_len: 0,
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -119,24 +132,14 @@ impl Lexer {
     pub fn force_lexeme_end(&self, prev: StateID) -> LexerResult {
         let info = self.state_info(prev);
         match info.possible.first() {
-            Some(idx) => LexerResult::Lexeme(PreLexeme {
-                idx,
-                byte: None,
-                byte_next_row: false,
-                hidden_len: 0,
-            }),
+            Some(idx) => LexerResult::Lexeme(PreLexeme::just_idx(idx)),
             None => LexerResult::Error,
         }
     }
 
     pub fn try_lexeme_end(&mut self, prev: StateID) -> LexerResult {
         if let Some(idx) = self.state_info(prev).lowest_accepting {
-            LexerResult::Lexeme(PreLexeme {
-                idx,
-                byte: None,
-                byte_next_row: false,
-                hidden_len: 0,
-            })
+            LexerResult::Lexeme(PreLexeme::just_idx(idx))
         } else {
             LexerResult::Error
         }
@@ -149,6 +152,7 @@ impl Lexer {
             Some(PreLexeme {
                 idx,
                 byte: Some(b),
+                is_suffix: false,
                 byte_next_row: false,
                 hidden_len: 0,
             })
@@ -208,6 +212,7 @@ impl Lexer {
                     idx,
                     byte: Some(byte),
                     byte_next_row: true,
+                    is_suffix: false,
                     hidden_len: 0,
                 })
             } else {
@@ -218,10 +223,16 @@ impl Lexer {
                 if self.dfa.state_desc(state).has_special_token {
                     return LexerResult::SpecialToken(state);
                 }
+                let is_suffix = if hidden_len > 0 {
+                    self.lexer_spec().lexeme_spec(idx).is_suffix
+                } else {
+                    false
+                };
                 LexerResult::Lexeme(PreLexeme {
                     idx,
                     byte: Some(byte),
                     byte_next_row: false,
+                    is_suffix,
                     hidden_len,
                 })
             } else {

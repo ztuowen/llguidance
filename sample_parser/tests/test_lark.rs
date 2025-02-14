@@ -336,27 +336,39 @@ fn test_lark_syntax_perc() {
 fn test_lark_syntax_attributes() {
     lark_ok(
         r#" start: foo
-            foo[lazy]: /.*/ "#,
+            foo[stop=""]: /.*/ "#,
     );
 
     lark_ok(
         r#" start: foo
-            foo[lazy,max_tokens=12]: /.*/ "#,
+            foo[stop="",max_tokens=12]: /.*/ "#,
     );
 
     lark_ok(
         r#" start: foo
-            foo[capture,lazy]: /.*/ "#,
+            foo[capture,stop=""]: /.*/ "#,
     );
 
     lark_ok(
         r#" start: foo
-            foo[capture , lazy]: /.*/ "#,
+            foo[capture="bar" , stop=""]: /.*/ "#,
     );
 
     lark_ok(
         r#" start: foo
             foo[stop = "foobar"]: /.*/ "#,
+    );
+
+    lark_ok(
+        r#" start: foo
+            foo[stop = /foobar/]: /.*/ "#,
+    );
+
+    lark_ok(
+        r#" start: foo
+            foo[stop = STOP]: /.*/
+            STOP: "foobar"
+        "#,
     );
 
     lark_err_test(
@@ -367,7 +379,7 @@ fn test_lark_syntax_attributes() {
 
     lark_err_test(
         r#" start: foo
-            foo[lazy="foo"]: /.*/ "#,
+            foo[stop=""="foo"]: /.*/ "#,
         "Expected token",
     );
 

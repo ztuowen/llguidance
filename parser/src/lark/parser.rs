@@ -85,6 +85,7 @@ impl Parser {
             params,
             priority,
             expansions: Expansions(self.location(), Vec::new()),
+            suffix: None,
             stop: None,
             max_tokens: None,
             temperature: None,
@@ -148,8 +149,8 @@ impl Parser {
                     }
                 }
                 "lazy" => {
-                    if rule.stop.is_none() {
-                        rule.stop = Some(Value::LiteralString("".to_string(), "".to_string()));
+                    if !rule.is_lazy() {
+                        rule.suffix = Some(Value::LiteralRegex("".to_string(), "".to_string()));
                     }
                 }
                 _ => {
@@ -157,7 +158,19 @@ impl Parser {
                     match key.as_str() {
                         "stop" => {
                             let value = self.parse_value()?;
+                            ensure!(
+                                rule.stop.is_none() && rule.suffix.is_none(),
+                                "Cannot have multiple stop/suffix conditions"
+                            );
                             rule.stop = Some(value);
+                        }
+                        "suffix" => {
+                            let value = self.parse_value()?;
+                            ensure!(
+                                rule.stop.is_none() && rule.suffix.is_none(),
+                                "Cannot have multiple stop/suffix conditions"
+                            );
+                            rule.suffix = Some(value);
                         }
                         "max_tokens" => {
                             let value = self.expect_token(Token::Number)?.value.parse::<usize>()?;
