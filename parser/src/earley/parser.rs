@@ -353,9 +353,12 @@ impl Captures {
 
     fn push(&mut self, cap: (String, Vec<u8>)) {
         let (name, bytes) = cap;
-        if let Some(old) = self.capture_map.get(&name) {
-            if old == &bytes {
-                return;
+        // in Guidance, the __LIST_APPEND: ones are supposed to be appended not overwritten
+        if !name.starts_with("__LIST_APPEND:") {
+            if let Some(old) = self.capture_map.get(&name) {
+                if old == &bytes {
+                    return;
+                }
             }
         }
         self.capture_list.push((name.clone(), bytes.clone()));
@@ -1694,7 +1697,7 @@ impl ParserState {
         self.scratch.push_allowed_lexemes.clear();
         self.scratch.push_allowed_grammar_ids.set_all(false);
 
-        let lexemes_end = if self.scratch.row_end == 1 {
+        let lexemes_end = if self.scratch.row_start == 0 {
             // initial push - no lexemes scanned yet
             0
         } else {
