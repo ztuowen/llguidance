@@ -1297,7 +1297,6 @@ impl ParserState {
                     byte: Some(b']'),
                     byte_next_row: false,
                     hidden_len: 0,
-                    is_suffix: false,
                 };
                 self.advance_parser(pre)
             } else {
@@ -2011,12 +2010,8 @@ impl ParserState {
             bytes.push(byte.unwrap());
         }
 
-        Lexeme::new(
-            pre_lexeme.idx,
-            bytes,
-            pre_lexeme.hidden_len,
-            pre_lexeme.is_suffix,
-        )
+        let is_suffix = self.is_suffix_pre_lexeme(&pre_lexeme);
+        Lexeme::new(pre_lexeme.idx, bytes, pre_lexeme.hidden_len, is_suffix)
     }
 
     fn has_forced_bytes(&self, allowed_lexemes: &LexemeSet, bytes: &[u8]) -> bool {
@@ -2202,6 +2197,11 @@ impl ParserState {
         String::from_utf8_lossy(&self.trace_byte_stack).to_string()
     }
 
+    #[inline(always)]
+    fn is_suffix_pre_lexeme(&self, pre_lexeme: &PreLexeme) -> bool {
+        pre_lexeme.hidden_len > 0 && self.lexer_spec().lexeme_spec(pre_lexeme.idx).is_suffix
+    }
+
     /// Advance the parser with given 'pre_lexeme'.
     /// On return, the lexer_state will be the state *after* consuming
     /// 'pre_lexeme'.  As a special case, a following single byte lexeme
@@ -2274,7 +2274,7 @@ impl ParserState {
         if scan_res {
             let mut no_hidden = self.lexer_state_for_added_row(lexeme, transition_byte);
 
-            if pre_lexeme.hidden_len > 0 && !pre_lexeme.is_suffix {
+            if pre_lexeme.hidden_len > 0 && !self.is_suffix_pre_lexeme(&pre_lexeme) {
                 return self.handle_hidden_bytes(no_hidden, lexeme_byte, pre_lexeme);
             } else {
                 if pre_lexeme.byte_next_row && no_hidden.lexer_state.is_dead() {
