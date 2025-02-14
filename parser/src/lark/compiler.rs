@@ -317,6 +317,8 @@ impl Compiler {
                             NodeProps::default(),
                         ));
                     }
+                    // special case "" literal, so it doesn't pollute grammar with epsilon regex
+                    Value::LiteralString(s, _) if s.is_empty() => return Ok(self.builder.empty()),
                     Value::RegexExt(_)
                     | Value::LiteralRange(_, _)
                     | Value::LiteralString(_, _)

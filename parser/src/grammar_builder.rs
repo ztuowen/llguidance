@@ -569,10 +569,22 @@ impl GrammarBuilder {
                 placeholder.idx, self.nodes[placeholder.idx]
             );
         }
-        self.nodes[placeholder.idx] = Node::Join {
-            sequence: vec![ch[1]],
-            props: NodeProps::default(),
-        };
+        if self.is_placeholder(node) {
+            // in case we're setting one placeholder to another, make sure we don't swap the order
+            self.nodes[placeholder.idx] = Node::Join {
+                sequence: vec![ch[1]],
+                props: NodeProps::default(),
+            };
+        } else {
+            // otherwise (typical) copy node into placeholder, and replace node with reference to the placeholder
+            // this will lead to slightly simpler grammar in some cases
+            let prev_placeholder_link = Node::Join {
+                sequence: vec![ch[0]],
+                props: NodeProps::default(),
+            };
+            self.nodes[placeholder.idx] =
+                std::mem::replace(&mut self.nodes[node.idx], prev_placeholder_link);
+        }
     }
 
     pub fn set_start_node(&mut self, node: NodeRef) {
