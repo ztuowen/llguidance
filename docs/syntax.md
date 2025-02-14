@@ -104,25 +104,25 @@ with a definition of a Python string, depending on how the model was trained.
 
 ### Lexeme options
 
-These features are mostly for compatibility with [Guidance](https://github.com/guidance-ai/guidance).
+Some of these features (especially `stop`) are primarily for compatibility with [Guidance](https://github.com/guidance-ai/guidance).
 
-`lazy`, `max_tokens`, `temperature`, `suffix` and `stop` can be specified on rules,
-but the rule body must be a terminal.
+For all rules,
+`foo[capture]: ...` will generate a capture group named `foo` in the output,
+while `foo[capture="bar"]: ...` will generate a capture group named `bar`.
+
+For rules bodies of which are terminals (regexes or uppercase names), you can specify additional options:
+`lazy`, `max_tokens`, `temperature`, `suffix`, and `stop`.
 Example: `mygen[stop="\n", max_tokens=10, temperature=0.7]: /.*/`
 
 The `temperature` alters temperature while sampling tokens inside of the terminal,
 while `max_tokens` limits the number of tokens generated for the terminal.
-The `lazy`, `stop` and `suffix` are explained [below](#lazy-lexemes).
-
-Additionally, for all rules, not only ones with terminal bodies,
-`foo[capture]: ...` will generate a capture group named `foo` in the output,
-while `foo[capture="bar"]: ...` will generate a capture group named `bar`.
 
 #### Lazy lexemes
 
-Specifying `stop=""` will make the EOS token of the model act as the stop token.
+Specifying `stop=""` will make the EOS token of the model act as the stop condition.
 This is only useful if there is some other rule following this rule (otherwise the model will stop on EOS anyways),
-in which case llguidance will try to "backtrack" the EOS token (hide it from the LLM).
+in which case llguidance will try to "backtrack" the EOS token
+(hide it from the LLM; but see notes about backtracking below).
 
 If `stop` or `suffix` are specified and non-empty, or if `lazy` is specified, the regex
 will be treated as lazy, meaning it will match as few bytes as possible.
@@ -131,7 +131,7 @@ Consider the following rules:
 ```lark
 with_stop[capture, stop="<end>"]: /.*/        // capture: "foo"
 outer_stop[capture]: with_stop "<end>"        // capture: "foo<end>"
-outer_stop_problem[capture]: with_stop "bar"  // capture: "foobar"
+outer_stop_problem[capture]: with_stop "b"    // capture: "foob"
 
 with_suffix[capture, suffix="<end>"]: /.*/    // capture: "foo"
 outer_suffix[capture]: with_suffix            // capture: "foo<end>"
@@ -140,8 +140,9 @@ with_lazy[capture, lazy]: /.*<end>/           // capture: "foo<end>"
 outer_lazy[capture]: with_lazy                // capture: "foo<end>"
 ```
 
-Given a string `"foo<end>bar<end>"`, they will all match just the prefix `"foo<end>"`
-(as they are all lazy).
+They are all lazy, so
+given a string `"foo<end>bar<end>"`, they will all match just the prefix `"foo<end>"`
+(except for `outer_stop_problem` which will match `"foo<end>b"`).
 The captures are listed in the comments.
 
 All the `with_*` rules use the same regex, but `with_stop` will attempt to "hide"
@@ -158,6 +159,8 @@ The `suffix` offers a simpler alternative: the capture for the rule with `suffix
 does not include the suffix, but the captures for upper-level rules do,
 and there is never any backtracking.
 
+For both `stop` and `suffix`, the value can be any terminal (string literal, regex, or uppercase name).
+
 If you don't care about captures, you can just put `lazy` on the rule.
 It is most useful when the regular expression ends with some delimiter.
 If it doesn't, the results may be surprising:
@@ -171,11 +174,11 @@ LLGuidance supports [extended regex syntax](https://docs.rs/regex/latest/regex/#
 This includes character classes (`/[a-zA-Z]/`), repetition (`/a+/`, `/a*/`, `/a{10,100}/`, `/a{10,}/`, `/a?/`),
 alternation (`/a|b/`), and grouping (`/(ab)+/`).
 
-Additionally, regexes can be defined with the standard Lark syntax, using [upper-case names](#terminals-vs-rules):
+Additionally, regexes can be defined with the standard Lark syntax, using [uppercase names](#terminals-vs-rules):
 
 ```lark
 // INT is equivalent to /(-)?[0-9]+/
-INT: "-"? UINT 
+INT: "-"? UINT
 UINT: DIGIT+
 DIGIT: /[0-9]/
 ```
@@ -273,7 +276,7 @@ Example:
 Following features of Lark syntax are currently not supported:
 
 - lookarounds in lexer regexes
-- lazy modifier (`?`) in lexer regexes; you [can use](#lexeme-options) `[lazy]` to make the entire lexeme lazy
+- lazy modifier (`?`) in lexer regexes; you [can use](#lexeme-options) `[lazy]` to make the entire terminal lazy
 - priorities of terminals
 - templates
 - imports (other than built-in `%import common`)

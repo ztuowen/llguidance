@@ -1,7 +1,10 @@
 use anyhow::Result;
 use derivre::{raw::ExprSet, ExprRef, JsonQuoteOptions, RegexAst, RegexBuilder};
 use std::{fmt::Debug, hash::Hash, ops::RangeInclusive};
-use toktrie::{bytes::limit_str, SimpleVob, TokTrie, TokenId};
+use toktrie::{
+    bytes::{limit_bytes, limit_str},
+    SimpleVob, TokTrie, TokenId,
+};
 
 use crate::{api::ParserLimits, id32_type};
 
@@ -434,6 +437,18 @@ pub struct Lexeme {
     hidden_len: usize,
 }
 
+impl Debug for Lexeme {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Lexeme([{}], {:?} + {:?})",
+            self.idx.0,
+            limit_bytes(self.visible_bytes(), 100),
+            limit_bytes(self.hidden_bytes(), 100)
+        )
+    }
+}
+
 impl Lexeme {
     pub fn new(idx: LexemeIdx, bytes: Vec<u8>, hidden_len: usize) -> Self {
         Lexeme {
@@ -474,5 +489,9 @@ impl Lexeme {
 
     pub fn hidden_bytes(&self) -> &[u8] {
         &self.bytes[self.num_visible_bytes()..]
+    }
+
+    pub fn all_bytes(&self) -> &[u8] {
+        &self.bytes
     }
 }

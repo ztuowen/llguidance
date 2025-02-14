@@ -992,9 +992,7 @@ fn test_suffix_tool() {
         ],
     );
     check_capture(&c, "data", "{\"foo\": \"bar\"}");
-    check_capture(&c, "name", "foo<bar>");
-
-    // TODO this should work
-    // check_capture(&c, "name_inner", "foo<bar>");
+    check_capture(&c, "name_inner", "foo<bar>");
+    // TODO:
     // check_capture(&c, "name", "foo<bar></tool_name>");
 }

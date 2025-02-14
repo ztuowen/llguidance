@@ -237,6 +237,12 @@ impl Item {
             data: self.data + 1,
         }
     }
+
+    fn rewind_dot(&self) -> Self {
+        Item {
+            data: self.data - 1,
+        }
+    }
 }
 
 impl Debug for Item {
@@ -1591,12 +1597,84 @@ impl ParserState {
         self.push_row(self.num_rows(), lexeme)
     }
 
+    fn mk_capture(&self, var_name: &str, bytes: &[u8]) -> (String, Vec<u8>) {
+        debug!(
+            "      capture: {} {:?}",
+            var_name,
+            String::from_utf8_lossy(&bytes)
+        );
+
+        let bytes = self.tok_env.tok_trie().decode_raw_to_decode(bytes);
+        (var_name.to_string(), bytes)
+    }
+
+    fn process_one_capture(
+        &mut self,
+        lhs: CSymIdx,
+        curr_idx: usize,
+        lexeme: &Lexeme,
+        _is_lexeme: bool,
+        capture_start: usize,
+    ) {
+        let sym_data = self.grammar.sym_data(lhs);
+
+        if let Some(var_name) = sym_data.props.stop_capture_name.as_ref() {
+            let bytes = lexeme.hidden_bytes();
+            self.captures.push(self.mk_capture(var_name, bytes));
+        }
+
+        if let Some(var_name) = sym_data.props.capture_name.as_ref() {
+            let mut bytes = Vec::new();
+            if capture_start < curr_idx {
+                bytes = self.row_infos[capture_start..curr_idx]
+                    .iter()
+                    .map(|ri| ri.lexeme.visible_bytes())
+                    .collect::<Vec<_>>()
+                    .concat();
+            }
+            bytes.extend_from_slice(lexeme.visible_bytes());
+            self.captures.push(self.mk_capture(var_name, &bytes));
+        }
+    }
+
+    fn process_captures(&mut self, item: Item, curr_idx: usize, lexeme: &Lexeme, for_lexeme: bool) {
+        let rule = item.rhs_ptr();
+        let for_full_rule = self.grammar.sym_idx_dot(rule) == CSymIdx::NULL;
+
+        debug!(
+            "    process_captures: for_full_rule={} for_lexeme={}; {:?}",
+            for_full_rule, for_lexeme, lexeme
+        );
+
+        if for_full_rule {
+            let lhs = self.grammar.sym_idx_lhs(rule);
+            self.process_one_capture(lhs, curr_idx, lexeme, false, item.start_pos());
+        }
+
+        if for_lexeme {
+            // let (_, dot_pos) = self.grammar.rule_rhs(rule);
+            // assert!(dot_pos > 0);
+            let prev_item = item.rewind_dot();
+            let lex_idx = self.grammar.sym_idx_dot(prev_item.rhs_ptr());
+            assert!(lex_idx != CSymIdx::NULL);
+            self.process_one_capture(lex_idx, curr_idx, lexeme, true, curr_idx);
+        }
+    }
+
     #[inline(always)]
     fn process_agenda(&mut self, curr_idx: usize, lexeme: &Lexeme) {
         let mut agenda_ptr = self.scratch.row_start;
 
         self.scratch.push_allowed_lexemes.clear();
         self.scratch.push_allowed_grammar_ids.set_all(false);
+
+        let lexemes_end = if self.scratch.row_end == 1 {
+            // initial push - no lexemes scanned yet
+            0
+        } else {
+            // here, items[self.scratch.row_start..lexemes_end] are all lexemes
+            self.scratch.row_end
+        };
 
         // Agenda retrieval is a simplification of Kallmeyer 2018.
         // There is no separate data structure for the agenda --
@@ -1616,52 +1694,16 @@ impl ParserState {
             let rule = item.rhs_ptr();
             let after_dot = self.grammar.sym_idx_dot(rule);
 
+            if self.scratch.definitive {
+                let is_lexeme = agenda_ptr <= lexemes_end;
+                if is_lexeme || after_dot == CSymIdx::NULL {
+                    self.process_captures(item, curr_idx, lexeme, is_lexeme);
+                }
+            }
+
             // If 'rule' is a complete Earley item ...
             if after_dot == CSymIdx::NULL {
-                let flags = self.grammar.sym_flags_lhs(rule);
                 let lhs = self.grammar.sym_idx_lhs(rule);
-
-                if self.scratch.definitive && flags.stop_capture() {
-                    let var_name = self
-                        .grammar
-                        .sym_data(lhs)
-                        .props
-                        .stop_capture_name
-                        .as_ref()
-                        .unwrap();
-
-                    let bytes = lexeme.hidden_bytes();
-                    let bytes = self.tok_env.tok_trie().decode_raw_to_decode(&bytes);
-                    self.captures.push((var_name.clone(), bytes));
-                }
-
-                if self.scratch.definitive && flags.capture() {
-                    let var_name = self
-                        .grammar
-                        .sym_data(lhs)
-                        .props
-                        .capture_name
-                        .as_ref()
-                        .unwrap();
-                    let mut bytes = Vec::new();
-                    let capture_start = item.start_pos();
-                    if capture_start < curr_idx {
-                        bytes = self.row_infos[capture_start..curr_idx]
-                            .iter()
-                            .map(|ri| ri.lexeme.visible_bytes())
-                            .collect::<Vec<_>>()
-                            .concat();
-                    }
-                    bytes.extend_from_slice(lexeme.visible_bytes());
-                    debug!(
-                        "      capture: {} {:?}",
-                        var_name,
-                        String::from_utf8_lossy(&bytes)
-                    );
-                    let bytes = self.tok_env.tok_trie().decode_raw_to_decode(&bytes);
-                    self.captures.push((var_name.clone(), bytes));
-                }
-
                 if item.start_pos() < curr_idx {
                     // if item.start_pos() == curr_idx, then we handled it below in the nullable check
 
