@@ -435,26 +435,29 @@ pub struct Lexeme {
     pub idx: LexemeIdx,
     bytes: Vec<u8>,
     hidden_len: usize,
+    is_suffix: bool,
 }
 
 impl Debug for Lexeme {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "Lexeme([{}], {:?} + {:?})",
+            "Lexeme([{}], {:?} + {:?}{})",
             self.idx.0,
             limit_bytes(self.visible_bytes(), 100),
-            limit_bytes(self.hidden_bytes(), 100)
+            limit_bytes(self.hidden_bytes(), 100),
+            if self.is_suffix { " suffix" } else { "" }
         )
     }
 }
 
 impl Lexeme {
-    pub fn new(idx: LexemeIdx, bytes: Vec<u8>, hidden_len: usize) -> Self {
+    pub fn new(idx: LexemeIdx, bytes: Vec<u8>, hidden_len: usize, is_suffix: bool) -> Self {
         Lexeme {
             idx,
             bytes,
             hidden_len,
+            is_suffix,
         }
     }
 
@@ -463,6 +466,7 @@ impl Lexeme {
             idx,
             hidden_len: 0,
             bytes: Vec::new(),
+            is_suffix: false,
         }
     }
 
@@ -475,6 +479,10 @@ impl Lexeme {
         self.idx.0 == 0 && self.bytes.is_empty()
     }
 
+    pub fn is_suffix(&self) -> bool {
+        self.is_suffix
+    }
+
     pub fn num_hidden_bytes(&self) -> usize {
         self.hidden_len
     }
@@ -485,6 +493,14 @@ impl Lexeme {
 
     pub fn visible_bytes(&self) -> &[u8] {
         &self.bytes[0..self.num_visible_bytes()]
+    }
+
+    pub fn upper_visible_bytes(&self, is_lexeme: bool) -> &[u8] {
+        if is_lexeme || !self.is_suffix {
+            self.visible_bytes()
+        } else {
+            self.all_bytes()
+        }
     }
 
     pub fn hidden_bytes(&self) -> &[u8] {
