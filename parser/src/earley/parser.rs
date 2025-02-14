@@ -2091,7 +2091,7 @@ impl ParserState {
         let lexeme = self.mk_lexeme(lexeme_byte, pre_lexeme);
 
         let hidden_bytes = lexeme.hidden_bytes();
-        assert!(hidden_bytes.len() == pre_lexeme.hidden_len);
+        assert!(hidden_bytes.len() == pre_lexeme.hidden_len as usize);
 
         let trace_here = self.scratch.definitive;
 

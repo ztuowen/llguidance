@@ -38,7 +38,7 @@ pub struct PreLexeme {
     /// Does the 'byte' above belong to the next lexeme?
     pub byte_next_row: bool,
     /// Length in bytes of the hidden part of the lexeme.
-    pub hidden_len: usize,
+    pub hidden_len: u32,
 }
 
 impl PreLexeme {

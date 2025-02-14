@@ -434,7 +434,7 @@ impl Debug for LexerSpec {
 pub struct Lexeme {
     pub idx: LexemeIdx,
     bytes: Vec<u8>,
-    hidden_len: usize,
+    hidden_len: u32,
     is_suffix: bool,
 }
 
@@ -452,7 +452,7 @@ impl Debug for Lexeme {
 }
 
 impl Lexeme {
-    pub fn new(idx: LexemeIdx, bytes: Vec<u8>, hidden_len: usize, is_suffix: bool) -> Self {
+    pub fn new(idx: LexemeIdx, bytes: Vec<u8>, hidden_len: u32, is_suffix: bool) -> Self {
         Lexeme {
             idx,
             bytes,
@@ -483,12 +483,13 @@ impl Lexeme {
         self.is_suffix
     }
 
+    #[inline(always)]
     pub fn num_hidden_bytes(&self) -> usize {
-        self.hidden_len
+        self.hidden_len as usize
     }
 
     pub fn num_visible_bytes(&self) -> usize {
-        self.bytes.len() - self.hidden_len
+        self.bytes.len() - self.num_hidden_bytes()
     }
 
     pub fn visible_bytes(&self) -> &[u8] {

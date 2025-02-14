@@ -133,7 +133,7 @@ pub struct StateDesc {
     pub lowest_accepting: Option<LexemeIdx>,
     pub accepting: LexemeSet,
     pub possible: LexemeSet,
-    pub lowest_match: Option<(LexemeIdx, usize)>,
+    pub lowest_match: Option<(LexemeIdx, u32)>,
     pub has_special_token: bool,
 
     possible_lookahead_len: Option<usize>,
@@ -299,7 +299,7 @@ impl RegexVec {
     // If there is no lazy regex, and all greedy lexemes have reached the end of
     // the lexeme, then it is the first greedy lexeme.  If neither of these
     // criteria produce a choice for "best", 'None' is returned.
-    fn lowest_match_inner(&mut self, state: StateID) -> Option<(LexemeIdx, usize)> {
+    fn lowest_match_inner(&mut self, state: StateID) -> Option<(LexemeIdx, u32)> {
         // 'all_eoi' is true if all greedy lexemes match, that is, if we are at
         // the end of lexeme for all of them.  End of lexeme is called
         // "end of input" or EOI for consistency with the regex package.
@@ -324,7 +324,7 @@ impl RegexVec {
             // lazy lexeme is our lowest, or best, match.  We return it and are done.
             if self.lazy.contains(idx) {
                 let len = self.exprs.possible_lookahead_len(e);
-                return Some((idx, len));
+                return Some((idx, len as u32));
             }
 
             // If we are here, we are greedy matching.
@@ -336,7 +336,7 @@ impl RegexVec {
                     // then, if we have not yet found a matching greedy lexeme, set
                     // this one to be our lowest match ...
                     if eoi_candidate.is_none() {
-                        eoi_candidate = Some((idx, self.exprs.possible_lookahead_len(e)));
+                        eoi_candidate = Some((idx, self.exprs.possible_lookahead_len(e) as u32));
                     }
                 } else {
                     // ... otherwise, if this greedy lexeme is not yet a match, then indicate
@@ -363,7 +363,7 @@ impl RegexVec {
     /// Lazy regexes match as soon as they accept, while greedy only
     /// if they accept and force EOI.
     #[inline(always)]
-    pub fn lowest_match(&mut self, state: StateID) -> Option<(LexemeIdx, usize)> {
+    pub fn lowest_match(&mut self, state: StateID) -> Option<(LexemeIdx, u32)> {
         self.state_descs[state.as_usize()].lowest_match
     }
 
