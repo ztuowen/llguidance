@@ -11,7 +11,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use crate::{HashSet, Instant};
+use crate::{HashMap, HashSet, Instant};
 use anyhow::{bail, ensure, Result};
 use derivre::{AlphabetInfo, NextByte, RegexAst, StateID};
 use serde::{Deserialize, Serialize};
@@ -338,13 +338,39 @@ struct LexerState {
 }
 
 #[derive(Clone)]
+struct Captures {
+    capture_list: Vec<(String, Vec<u8>)>,
+    capture_map: HashMap<String, Vec<u8>>,
+}
+
+impl Captures {
+    fn new() -> Self {
+        Captures {
+            capture_list: vec![],
+            capture_map: HashMap::default(),
+        }
+    }
+
+    fn push(&mut self, cap: (String, Vec<u8>)) {
+        let (name, bytes) = cap;
+        if let Some(old) = self.capture_map.get(&name) {
+            if old == &bytes {
+                return;
+            }
+        }
+        self.capture_list.push((name.clone(), bytes.clone()));
+        self.capture_map.insert(name, bytes);
+    }
+}
+
+#[derive(Clone)]
 struct ParserState {
     grammar: Arc<CGrammar>,
     tok_env: TokEnv,
     scratch: Scratch,
     trie_lexer_stack: usize,
     trie_grammar_stack: usize,
-    captures: Vec<(String, Vec<u8>)>,
+    captures: Captures,
 
     // These are updated also in speculative mode.
     // Both are stacks only in the sense that items can be popped on backtracking
@@ -530,7 +556,7 @@ impl ParserState {
             rows: vec![],
             rows_valid_end: 0,
             row_infos: vec![],
-            captures: vec![],
+            captures: Captures::new(),
             scratch,
             stats: ParserStats::default(),
             metrics: ParserMetrics::default(),
@@ -2470,7 +2496,11 @@ impl Parser {
     }
 
     pub fn captures(&self) -> &[(String, Vec<u8>)] {
-        &self.state.captures
+        &self.state.captures.capture_list
+    }
+
+    pub fn get_capture(&self, name: &str) -> Option<&[u8]> {
+        self.state.captures.capture_map.get(name).map(|v| &v[..])
     }
 
     pub fn stats(&self) -> &ParserStats {

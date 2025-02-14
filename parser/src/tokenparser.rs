@@ -115,11 +115,7 @@ impl TokenParser {
     }
 
     pub fn get_capture(&self, name: &str) -> Option<&[u8]> {
-        self.parser
-            .captures()
-            .iter()
-            .find(|c| c.0 == name)
-            .map(|c| c.1.as_slice())
+        self.parser.get_capture(name)
     }
 
     // regular .clone() uses a shared lexer state

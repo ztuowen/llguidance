@@ -570,12 +570,14 @@ fn test_ll_stop_quote_comma() {
 
 #[test]
 fn test_ll_nullable_bug() {
-    check_lark_grammar(
-        r#"start: (maybe_a maybe_a maybe_a maybe_a | "foo")
+    let c = check_lark_grammar(
+        r#"start: s | "foo"
+           s[capture]: maybe_a maybe_a maybe_a maybe_a
            maybe_a: "a" | ""
         "#,
         &["", "a‧≺EOS≻"],
     );
+    check_capture(&c, "s", "a");
 }
 
 #[test]
