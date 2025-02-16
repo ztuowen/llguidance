@@ -102,6 +102,20 @@ so that it is treated as a terminal (single lexeme, or regex and not a context-f
 BTW, in this case you may want to replace the JSON string definition
 with a definition of a Python string, depending on how the model was trained.
 
+Yet another example is "thinking" or reasoning models distilled from DeepSeek-R1.
+A grammar for forcing JSON may look like this:
+
+```lark
+start: <think> "\n" /(.|\n)*/ </think> json
+json: %json { ... }
+```
+
+Often, the chat format already includes initial `<think>\n` - in these cases
+you can use `start: /(.|\n)*/ </think> json` as the grammar.
+
+This assumes `<think>` is a special token. If it was just a string, you would need 
+to use [`suffix="</think>"`](#lazy-lexemes).
+
 ### Lexeme options
 
 Some of these features (especially `stop`) are primarily for compatibility with [Guidance](https://github.com/guidance-ai/guidance).
