@@ -169,6 +169,20 @@ If it doesn't, the results may be surprising:
 for example, `foo[lazy]: /.*/` will match only the empty string,
 while `foo[lazy]: /[0-9]+/` will only match a single digit.
 
+Typical use of `suffix` or `lazy` is for models that were finetuned for reasoning or
+tool calling without special tokens, but with special strings. For example:
+
+```lark
+start: "<tool_name>" name "<tool_data>" data "</tool_data>"
+name[capture, suffix="</tool_name>"]: /.*/
+data[capture]: %json {
+    "properties": {
+        "foo": { "type": "string" }
+    },
+    "required": ["foo"]
+}
+```
+
 
 ### Structured %regex
 
