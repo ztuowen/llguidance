@@ -112,6 +112,8 @@ json: %json { ... }
 
 Often, the chat format already includes initial `<think>\n` - in these cases
 you can use `start: /(.|\n)*/ </think> json` as the grammar.
+You can also use `/(.|\n){1000,3000}/` to place lower and upper bounds on the thinking amount.
+
 
 This assumes `<think>` is a special token. If it was just a string, you would need 
 to use [`suffix="</think>"`](#lazy-lexemes).
