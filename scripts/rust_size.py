@@ -172,7 +172,10 @@ def main():
 
     def add_rec(name: str, trg: dict, d: dict):
         trg2 = {}
-        trg[f"{name:25}: {d['_']}"] = trg2
+        n = d["_"]
+        if n < cutoff:
+            return
+        trg[f"{name:25}: {n}"] = trg2
         for k, v in sorted(d.items(), key=lambda x: 0 if x[0] == "_" else x[1]["_"], reverse=True):
             if k == "_":
                 continue

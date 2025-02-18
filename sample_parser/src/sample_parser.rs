@@ -44,7 +44,6 @@ fn main() {
     } else {
         panic!("Unknown schema file extension")
     };
-    let obj_str = read_file_to_string(&args[2]);
 
     // you can implement TokEnv yourself, if you have the tokenizer
     // see the ByteTokenizerEnv for an example
@@ -52,8 +51,6 @@ fn main() {
         toktrie_hf_tokenizers::ByteTokenizerEnv::from_name("microsoft/Phi-3.5-mini-instruct", None)
             .unwrap()
             .to_env();
-
-    let tokens = tok_env.tokenize(&obj_str);
 
     // set to 2 for more output; 1 is warnings only
     let stderr_log_level = 1;
@@ -81,8 +78,16 @@ fn main() {
     // enable sending parser results back via the logs (constraint.flush_logs())
     constraint.log_json_progress = true;
 
+    if args[2] == "SKIP" {
+        constraint.start_without_prompt();
+        let _ = constraint.compute_mask().unwrap();
+        return;
+    }
+
     let trie = tok_env.tok_trie();
 
+    let obj_str = read_file_to_string(&args[2]);
+    let tokens = tok_env.tokenize(&obj_str);
     eprintln!("Parsing tokens: {}", trie.tokens_dbg(&tokens));
 
     // constraint.parser.start_without_prompt();

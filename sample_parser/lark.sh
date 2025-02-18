@@ -14,8 +14,11 @@ case "$1" in
     test )
         set -xe
         ../scripts/gbnf_to_lark.py data/from-llama.cpp/*.gbnf
-        cargo run --bin lark_test -- data/from-llama.cpp/*.lark
-        exit $?
+        cargo build
+        for f in data/from-llama.cpp/*.lark ; do
+            ../target/debug/sample_parser "$f" SKIP
+        done
+        exit 0
         ;;
     *)
         echo "Usage: $0 <lark_file> [args...]"
@@ -23,4 +26,4 @@ case "$1" in
         ;;
 esac
 
-cargo run --bin lark_test -- $LARK
+cargo run -- $LARK SKIP

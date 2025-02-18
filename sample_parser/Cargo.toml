@@ -17,17 +17,5 @@ name = "sample_parser"
 path = "src/sample_parser.rs"
 
 [[bin]]
-name = "json_schema_testsuite"
-path = "src/json_schema_testsuite.rs"
-
-[[bin]]
-name = "schema_tester"
-path = "src/schema_tester.rs"
-
-[[bin]]
 name = "minimal"
 path = "src/minimal.rs"
-
-[[bin]]
-name = "lark_test"
-path = "src/lark_test.rs"
