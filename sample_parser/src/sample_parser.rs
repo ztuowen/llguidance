@@ -102,11 +102,14 @@ fn main() {
             break;
         }
 
+        let mut is_allowed = true;
+
         let sampled_token = if let Some(mask) = &res.sample_mask {
             // Simulate sampling - it should use the mask and temperature
+            let sampled_token = tokens[idx];
+            is_allowed = mask.is_allowed(sampled_token);
             black_box(mask);
             black_box(constraint.temperature);
-            let sampled_token = tokens[idx];
 
             let p_stats = constraint.parser.last_step_stats();
             println!(
@@ -125,7 +128,13 @@ fn main() {
             None
         };
 
+        // run commit_token() before checking the mask - it produces more diagnostics that way
         let splice = constraint.commit_token(sampled_token).unwrap();
+
+        if !is_allowed {
+            panic!("Sampled token was not allowed by the mask");
+        }
+
         if splice.stop {
             // stop sequence
             break;
