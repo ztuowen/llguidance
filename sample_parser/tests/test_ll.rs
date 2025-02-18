@@ -998,3 +998,23 @@ fn test_suffix_tool() {
     check_capture(&c, "name_inner", "foo<bar>");
     check_capture(&c, "name", "foo<bar></tool_name>");
 }
+
+#[test]
+fn test_ll_initial_capture() {
+    // https://github.com/guidance-ai/llguidance/issues/122
+    let c = check_lark_grammar(
+        r#"start: "This is a" text
+           text[capture]: "nope" | ""
+        "#,
+        &["This‧ is", " ano", "pe"],
+    );
+    check_capture(&c, "text", "nope");
+
+    let c = check_lark_grammar(
+        r#"start: "This is a" text
+           text[capture]: "nope" | ""
+        "#,
+        &["This‧ is", " a‧≺EOS≻"],
+    );
+    check_capture(&c, "text", "");
+}

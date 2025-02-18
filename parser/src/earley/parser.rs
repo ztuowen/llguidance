@@ -1646,6 +1646,14 @@ impl ParserState {
     ) {
         let sym_data = self.grammar.sym_data(lhs);
 
+        debug!(
+            "      process_one_capture: {} {}-{} {}",
+            self.grammar.sym_name(lhs),
+            capture_start,
+            curr_idx,
+            if is_lexeme { "lexeme" } else { "full" }
+        );
+
         if let Some(var_name) = sym_data.props.stop_capture_name.as_ref() {
             let bytes = lexeme.hidden_bytes();
             self.captures.push(self.mk_capture(var_name, bytes));
@@ -1660,7 +1668,9 @@ impl ParserState {
                     .collect::<Vec<_>>()
                     .concat();
             }
-            bytes.extend_from_slice(lexeme.upper_visible_bytes(is_lexeme));
+            if is_lexeme || capture_start < curr_idx {
+                bytes.extend_from_slice(lexeme.upper_visible_bytes(is_lexeme));
+            }
             self.captures.push(self.mk_capture(var_name, &bytes));
         }
     }
