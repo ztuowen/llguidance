@@ -33,6 +33,98 @@ pub struct LexerStats {
     pub error: bool,
 }
 
+#[derive(Clone)]
+pub enum MatchingLexemes {
+    None,
+    One(LexemeIdx),
+    Two([LexemeIdx; 2]),
+    Many(Vec<LexemeIdx>),
+}
+
+impl MatchingLexemes {
+    pub fn is_some(&self) -> bool {
+        match self {
+            MatchingLexemes::None => false,
+            _ => true,
+        }
+    }
+
+    pub fn is_none(&self) -> bool {
+        !self.is_some()
+    }
+
+    pub fn first(&self) -> Option<LexemeIdx> {
+        match self {
+            MatchingLexemes::None => None,
+            MatchingLexemes::One(idx) => Some(*idx),
+            MatchingLexemes::Two([idx, _]) => Some(*idx),
+            MatchingLexemes::Many(v) => v.first().copied(),
+        }
+    }
+
+    pub fn contains(&self, idx: LexemeIdx) -> bool {
+        match self {
+            MatchingLexemes::None => false,
+            MatchingLexemes::One(idx2) => *idx2 == idx,
+            MatchingLexemes::Two([idx1, idx2]) => *idx1 == idx || *idx2 == idx,
+            MatchingLexemes::Many(v) => v.contains(&idx),
+        }
+    }
+
+    pub fn add(&mut self, idx: LexemeIdx) {
+        match self {
+            MatchingLexemes::None => *self = MatchingLexemes::One(idx),
+            MatchingLexemes::One(idx2) => {
+                *self = MatchingLexemes::Two([*idx2, idx]);
+            }
+            MatchingLexemes::Two([idx1, idx2]) => {
+                *self = MatchingLexemes::Many(vec![*idx1, *idx2, idx]);
+            }
+            MatchingLexemes::Many(v) => {
+                v.push(idx);
+            }
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        match self {
+            MatchingLexemes::None => 0,
+            MatchingLexemes::One(_) => 1,
+            MatchingLexemes::Two(_) => 2,
+            MatchingLexemes::Many(v) => v.len(),
+        }
+    }
+
+    pub fn as_slice(&self) -> &[LexemeIdx] {
+        match self {
+            MatchingLexemes::None => &[],
+            MatchingLexemes::One(idx) => std::slice::from_ref(idx),
+            MatchingLexemes::Two(v) => v,
+            MatchingLexemes::Many(v) => v.as_slice(),
+        }
+    }
+}
+
+impl Debug for MatchingLexemes {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MatchingLexemes::None => write!(f, "Lex:[]"),
+            MatchingLexemes::One(idx) => write!(f, "Lex:[{}]", idx.as_usize()),
+            MatchingLexemes::Two([idx1, idx2]) => {
+                write!(f, "Lex:[{},{}]", idx1.as_usize(), idx2.as_usize())
+            }
+            MatchingLexemes::Many(v) => write!(
+                f,
+                "Lex:[{}]",
+                v.iter()
+                    .map(|idx| idx.as_usize().to_string())
+                    .collect::<Vec<_>>()
+                    .join(",")
+            ),
+        }
+    }
+}
+
 impl Display for LexerStats {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
@@ -115,6 +207,8 @@ pub struct RegexVec {
     next_byte: NextByteCache,
     relevance: RelevanceCache,
     alpha: AlphabetInfo,
+    #[allow(dead_code)]
+    rx_lexemes: Vec<RxLexeme>,
     lazy: LexemeSet,
     rx_list: Vec<ExprRef>,
     special_token_rx: Option<ExprRef>,
@@ -130,25 +224,20 @@ pub struct RegexVec {
 #[derive(Clone, Debug)]
 pub struct StateDesc {
     pub state: StateID,
-    pub lowest_accepting: Option<LexemeIdx>,
-    pub accepting: LexemeSet,
+    pub greedy_accepting: MatchingLexemes,
     pub possible: LexemeSet,
-    pub lowest_match: Option<(LexemeIdx, u32)>,
+
+    /// Index of lowest matching regex if any.
+    /// Lazy regexes match as soon as they accept, while greedy only
+    /// if they accept and force EOI.
+    pub lazy_accepting: MatchingLexemes,
+    pub lazy_hidden_len: u32,
+
     pub has_special_token: bool,
 
     possible_lookahead_len: Option<usize>,
     lookahead_len: Option<Option<usize>>,
     next_byte: Option<NextByte>,
-}
-
-impl StateDesc {
-    pub fn is_accepting(&self) -> bool {
-        self.lowest_accepting.is_some()
-    }
-
-    pub fn is_dead(&self) -> bool {
-        self.possible.is_empty()
-    }
 }
 
 // public implementation
@@ -194,10 +283,9 @@ impl RegexVec {
 
     pub fn lookahead_len_for_state(&mut self, state: StateID) -> Option<usize> {
         let desc = &mut self.state_descs[state.as_usize()];
-        if desc.lowest_accepting.is_none() {
+        if desc.greedy_accepting.is_none() {
             return None;
         }
-        let idx = desc.lowest_accepting.unwrap();
         if let Some(len) = desc.lookahead_len {
             return len;
         }
@@ -205,7 +293,7 @@ impl RegexVec {
         let exprs = &self.exprs;
         for (idx2, e) in iter_state(&self.rx_sets, state) {
             if res.is_none() && exprs.is_nullable(e) {
-                assert!(idx == idx2);
+                assert!(desc.greedy_accepting.contains(idx2));
                 res = Some(exprs.lookahead_len(e).unwrap_or(0));
             }
         }
@@ -299,7 +387,7 @@ impl RegexVec {
     // If there is no lazy regex, and all greedy lexemes have reached the end of
     // the lexeme, then it is the first greedy lexeme.  If neither of these
     // criteria produce a choice for "best", 'None' is returned.
-    fn lowest_match_inner(&mut self, state: StateID) -> Option<(LexemeIdx, u32)> {
+    fn lowest_match_inner(&mut self, desc: &mut StateDesc) {
         // 'all_eoi' is true if all greedy lexemes match, that is, if we are at
         // the end of lexeme for all of them.  End of lexeme is called
         // "end of input" or EOI for consistency with the regex package.
@@ -308,26 +396,40 @@ impl RegexVec {
 
         // 'eoi_candidate' tracks the lowest (aka first or best) greedy match.
         // Initially, there is none.
-        let mut eoi_candidate = None;
+        let mut eois = MatchingLexemes::None;
+
+        let mut lazies = MatchingLexemes::None;
+
+        let mut hidden_len = 0;
 
         // For every regex in this state
-        for (idx, e) in iter_state(&self.rx_sets, state) {
+        for (idx, e) in iter_state(&self.rx_sets, desc.state) {
             // If this lexeme is not a match.  (If the derivative at this point is nullable,
             // there is a match, so if it is not nullable, there is no match.)
             if !self.exprs.is_nullable(e) {
                 // No match, so not at end of lexeme
                 all_eoi = false;
                 continue;
+            } else if Some(e) == self.special_token_rx {
+                // the regex is /\xFF\[[0-9]+\]/ so it's guaranteed not to conflict with anything
+                // else (starts with non-unicode byte); thus we ignore the rest of processing
+                desc.lazy_accepting = MatchingLexemes::One(idx);
+                return;
             }
 
             // If this is the first lazy lexeme, we can cut things short.  The first
             // lazy lexeme is our lowest, or best, match.  We return it and are done.
             if self.lazy.contains(idx) {
-                let len = self.exprs.possible_lookahead_len(e);
-                return Some((idx, len as u32));
+                if lazies.is_none() {
+                    all_eoi = false;
+                    hidden_len = self.exprs.possible_lookahead_len(e) as u32;
+                    if Some(self.get_rx(idx)) == self.special_token_rx {
+                        desc.has_special_token = true;
+                    }
+                }
+                lazies.add(idx);
+                continue;
             }
-
-            // If we are here, we are greedy matching.
 
             // If all the greedy lexemes so far are matches.
             if all_eoi {
@@ -335,9 +437,7 @@ impl RegexVec {
                 if self.next_byte.next_byte(&self.exprs, e) == NextByte::ForcedEOI {
                     // then, if we have not yet found a matching greedy lexeme, set
                     // this one to be our lowest match ...
-                    if eoi_candidate.is_none() {
-                        eoi_candidate = Some((idx, self.exprs.possible_lookahead_len(e) as u32));
-                    }
+                    eois.add(idx);
                 } else {
                     // ... otherwise, if this greedy lexeme is not yet a match, then indicate
                     // that not all greedy lexemes are matches at this point.
@@ -346,25 +446,13 @@ impl RegexVec {
             }
         }
 
-        if all_eoi {
-            // At this point all lexemes are greedy, and are the end of lexeme,
-            // so there are no further possibilities for greediness.
-            // We tracked our lowest greedy lexeme in 'eoi_candidate', which we
-            // now return.
-            eoi_candidate
-        } else {
-            // For the greedy lexeme finding strategy, possibilities remain,
-            // so we have not yet settled on a lexeme, and return 'None'.
-            None
+        if lazies.is_some() {
+            desc.lazy_accepting = lazies;
+            desc.lazy_hidden_len = hidden_len;
+        } else if all_eoi {
+            desc.lazy_accepting = eois;
+            // no hidden len
         }
-    }
-
-    /// Return index of lowest matching regex if any.
-    /// Lazy regexes match as soon as they accept, while greedy only
-    /// if they accept and force EOI.
-    #[inline(always)]
-    pub fn lowest_match(&mut self, state: StateID) -> Option<(LexemeIdx, u32)> {
-        self.state_descs[state.as_usize()].lowest_match
     }
 
     /// Check if the there is only one transition out of state.
@@ -486,23 +574,37 @@ impl RegexVec {
     }
 }
 
+#[derive(Clone, Debug)]
+pub(crate) struct RxLexeme {
+    pub rx: ExprRef,
+    pub lazy: bool,
+    #[allow(dead_code)]
+    pub priority: i32,
+}
+
 // private implementation
 impl RegexVec {
     pub(crate) fn new_with_exprset(
         exprset: &ExprSet,
-        rx_list: &[ExprRef],
-        lazy: Option<LexemeSet>,
+        mut rx_lexemes: Vec<RxLexeme>,
         special_token_rx: Option<ExprRef>,
         limits: &mut ParserLimits,
     ) -> Result<Self> {
         let spec_pos = if let Some(rx) = special_token_rx {
-            rx_list.iter().position(|&r| r == rx)
+            rx_lexemes.iter().position(|r| r.rx == rx)
         } else {
             None
         };
-        let (alpha, mut exprset, mut rx_list) = AlphabetInfo::from_exprset(exprset, rx_list);
+        let (alpha, mut exprset, mut rx_list) = AlphabetInfo::from_exprset(
+            exprset,
+            &rx_lexemes.iter().map(|r| r.rx).collect::<Vec<_>>(),
+        );
         let num_ast_nodes = exprset.len();
         let special_token_rx = spec_pos.map(|pos| rx_list[pos]);
+
+        for idx in 0..rx_lexemes.len() {
+            rx_lexemes[idx].rx = rx_list[idx];
+        }
 
         let fuel0 = limits.initial_lexer_fuel;
         let mut relevance = RelevanceCache::new();
@@ -529,13 +631,21 @@ impl RegexVec {
                 .saturating_sub(exprset.cost() - c0);
         }
 
+        let mut lazy = LexemeSet::new(rx_lexemes.len());
+        for (idx, r) in rx_lexemes.iter().enumerate() {
+            if r.lazy {
+                lazy.add(LexemeIdx::new(idx));
+            }
+        }
+
         let rx_sets = StateID::new_hash_cons();
         let mut r = RegexVec {
             deriv: DerivCache::new(),
             next_byte: NextByteCache::new(),
             special_token_rx,
             relevance,
-            lazy: lazy.unwrap_or_else(|| LexemeSet::new(rx_list.len())),
+            lazy,
+            rx_lexemes,
             exprs: exprset,
             alpha,
             rx_list,
@@ -580,46 +690,41 @@ impl RegexVec {
         assert!(lst.len() % 2 == 0);
         let id = StateID::new(self.rx_sets.insert(&lst));
         if id.as_usize() >= self.state_descs.len() {
-            let mut state_desc = self.compute_state_desc(id);
-            state_desc.lowest_match = self.lowest_match_inner(id);
-            if let Some((idx, _)) = state_desc.lowest_match {
-                if Some(self.get_rx(idx)) == self.special_token_rx {
-                    state_desc.has_special_token = true;
-                }
-            }
+            let state_desc = self.compute_state_desc(id);
             self.append_state(state_desc);
         }
-        if self.state_desc(id).lowest_match.is_some() {
+        if self.state_desc(id).lazy_accepting.is_some() {
             id._set_lowest_match()
         } else {
             id
         }
     }
 
-    fn compute_state_desc(&self, state: StateID) -> StateDesc {
+    fn compute_state_desc(&mut self, state: StateID) -> StateDesc {
         let mut res = StateDesc {
             state,
-            lowest_accepting: None,
-            accepting: LexemeSet::new(self.rx_list.len()),
+            greedy_accepting: MatchingLexemes::None,
             possible: LexemeSet::new(self.rx_list.len()),
             possible_lookahead_len: None,
             lookahead_len: None,
             next_byte: None,
-            lowest_match: None,
+            lazy_accepting: MatchingLexemes::None,
+            lazy_hidden_len: 0,
             has_special_token: false,
         };
         for (idx, e) in iter_state(&self.rx_sets, state) {
             res.possible.add(idx);
             if self.exprs.is_nullable(e) {
-                res.accepting.add(idx);
-                if res.lowest_accepting.is_none() {
-                    res.lowest_accepting = Some(idx);
-                }
+                res.greedy_accepting.add(idx);
             }
         }
+
         if res.possible.is_empty() {
             assert!(state == StateID::DEAD);
         }
+
+        self.lowest_match_inner(&mut res);
+
         // debug!("state {:?} desc: {:?}", state, res);
         res
     }
