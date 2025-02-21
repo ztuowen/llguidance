@@ -40,7 +40,9 @@ typedef struct LlgParserLimits {
   size_t step_max_items;
   /**
    * Maximum number of lexer states.
-   * Default: 50_000
+   * Affects memory consumption, but not the speed for the most part.
+   * Default: 250_000
+   * Speed: ~1-2kB of memory per state
    */
   size_t max_lexer_states;
   /**
