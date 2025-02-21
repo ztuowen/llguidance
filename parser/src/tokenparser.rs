@@ -616,6 +616,12 @@ impl TokenParser {
                 (tokens, num_fixed) = self
                     .token_env
                     .tokenize_bytes_marker(&forced_bytes[num_existing_bytes..]);
+                infoln!(
+                    self,
+                    "re-tokenized: {} from: {:?}",
+                    trie.tokens_dbg(&tokens),
+                    &forced_bytes[num_existing_bytes..]
+                );
                 existing_tokens.clear();
             } else {
                 num_fixed = std::cmp::max(existing_tokens.len(), num_fixed);

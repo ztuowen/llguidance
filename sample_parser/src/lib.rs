@@ -2,7 +2,7 @@ use lazy_static::lazy_static;
 use llguidance::{
     api::{GrammarWithLexer, StopReason, TopLevelGrammar},
     earley::{SlicedBiasComputer, XorShift},
-    toktrie::{InferenceCapabilities, SimpleVob, TokEnv, TokenId},
+    toktrie::{InferenceCapabilities, TokEnv, TokenId},
     Constraint, ParserFactory,
 };
 

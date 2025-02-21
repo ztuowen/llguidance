@@ -946,7 +946,7 @@ fn main() {
 
     let mut factory = ParserFactory::new(&tok_env, caps.clone(), &slices).unwrap();
     factory.quiet();
-
+    // factory.set_stderr_log_level(2);
     // factory.limits_mut().step_lexer_fuel = 10_000_000;
 
     let mut ref_factory = ParserFactory::new(&tok_env, caps.clone(), &vec![]).unwrap();

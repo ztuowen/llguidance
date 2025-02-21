@@ -1,6 +1,7 @@
 // use 8:24 encoding - num_ch:tok_id (ch_byte:ch_off)* - 8 bytes per tree node
 // special case num_ch=0xff -> num_ch=0x100
 
+use core::str;
 use std::sync::Arc;
 
 use bytemuck_derive::{Pod, Zeroable};
@@ -620,25 +621,27 @@ impl TokTrie {
 
     pub fn tokenize_with_greedy_fallback(
         &self,
-        s: &[u8],
-        str_tokenize: impl FnOnce(&str) -> Vec<TokenId>,
+        bytes: &[u8],
+        str_tokenize: impl Fn(&str) -> Vec<TokenId>,
     ) -> Vec<TokenId> {
-        let utf8_str = String::from_utf8_lossy(s);
-        // if the string ends with a replacement character, remove them
-        let to_tokenize = if utf8_str.ends_with('\u{FFFD}') {
-            utf8_str.trim_end_matches('\u{FFFD}')
-        } else {
-            &utf8_str
-        };
-        let mut r = str_tokenize(to_tokenize);
-        // if we didn't tokenize everything (because of the replacement character)
-        // we tokenize the suffix using greedy tokenizer that is happy with bytes
-        let last_tokenized = to_tokenize.len();
-        if last_tokenized < s.len() {
-            let mut added = self.greedy_tokenize(&s[last_tokenized..]);
-            r.append(&mut added);
+        match str::from_utf8(bytes) {
+            Ok(s) => {
+                // fast path
+                str_tokenize(s)
+            }
+            Err(_) => {
+                let mut res = vec![];
+                for chunk in bytes.utf8_chunks() {
+                    if !chunk.valid().is_empty() {
+                        res.extend(str_tokenize(chunk.valid()));
+                    }
+                    if !chunk.invalid().is_empty() {
+                        res.extend(self.greedy_tokenize(chunk.invalid()));
+                    }
+                }
+                res
+            }
         }
-        r
     }
 
     pub fn has_extensions(&self, bytes: &[u8]) -> bool {
