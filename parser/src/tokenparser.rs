@@ -29,12 +29,12 @@ pub struct TokenParser {
     is_accepting_cache: Option<bool>,
     stop_reason: StopReason,
     error_message: Option<String>,
-
     max_tokens_total: usize,
 
     // tokens currently in KV cache
     llm_tokens: Vec<TokenId>,
     llm_bytes: Vec<u8>,
+
     grm_prefix: Vec<u8>,
     is_fresh: bool,
 }
@@ -311,6 +311,55 @@ impl TokenParser {
         self.validate_tokens_raw(&[token]).map(|n| n > 0)
     }
 
+    pub fn rollback(&mut self, n_tokens: usize) -> Result<()> {
+        if n_tokens == 0 {
+            return Ok(());
+        }
+
+        ensure!(
+            n_tokens <= self.llm_tokens.len(),
+            "rollback: {} > {}",
+            n_tokens,
+            self.llm_tokens.len()
+        );
+
+        if self.stop_reason.is_ok() {
+            // if we're stopped in "normal" way (e.g. end of grammar reached),
+            // pretend we're not stopped
+            self.stop_reason = StopReason::NotStopped;
+        }
+
+        // this will fail in case we're in error state or not initialized
+        self.check_initialized("rollback")?;
+
+        let new_len = self.llm_tokens.len() - n_tokens;
+        let mut bytes_to_drop = 0;
+        for tok in &self.llm_tokens[new_len..] {
+            if *tok == self.eos_token {
+                // doesn't count; we hope it's last though...
+                bytes_to_drop += 0;
+            } else {
+                bytes_to_drop += self.tok_trie().token_len(*tok);
+            }
+        }
+        ensure!(
+            bytes_to_drop <= self.llm_bytes.len(),
+            "rollback bytes: {} > {}",
+            bytes_to_drop,
+            self.llm_bytes.len()
+        );
+
+        self.parser.rollback(bytes_to_drop)?;
+
+        self.is_accepting_cache = None;
+        self.max_tokens_total = self.max_tokens_total.saturating_add(n_tokens);
+        self.llm_tokens.truncate(new_len);
+        self.llm_bytes
+            .truncate(self.llm_bytes.len() - bytes_to_drop);
+
+        Ok(())
+    }
+
     /// Returns how many of the passed tokens can be accepted by the parser.
     /// It does not tokenize forced bytes, so will accept non-canonical tokenizations.
     /// If called with more than one token, it may ignore max_tokens constraints.
@@ -404,7 +453,7 @@ impl TokenParser {
 
         infoln!(
             self,
-            "apply_token: {} {} prefix={}",
+            "consume_token: {} {} prefix={}",
             tok_id,
             trie.token_dbg(tok_id),
             prefix_len
@@ -649,7 +698,8 @@ impl TokenParser {
         if token == self.eos_token {
             if self.parser.scan_eos() {
                 // it got scanned correctly, so we remove it
-                infoln!(self, "scanned eos_token");
+                // this only happens for gen() terminated by EOS
+                infoln!(self, "consume_token: scanned eos_token");
                 // if self.inference_caps.backtrack {
                 //     return Ok(1);
                 // } else {
@@ -660,7 +710,11 @@ impl TokenParser {
                 return Ok(0);
             } else {
                 let accepting = self.is_accepting();
-                infoln!(self, "didn't scan eos_token; accept={}", accepting);
+                infoln!(
+                    self,
+                    "consume_token: eos_token not eaten by parser; accept={}",
+                    accepting
+                );
                 if accepting {
                     self.llm_tokens.push(token);
                     return Ok(0);

@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{ensure, Result};
 use derivre::{raw::ExprSet, ExprRef, JsonQuoteOptions, RegexAst, RegexBuilder};
 use std::{fmt::Debug, hash::Hash, ops::RangeInclusive};
 use toktrie::{bytes::limit_bytes, SimpleVob, TokTrie, TokenId};
@@ -21,6 +21,8 @@ pub struct LexerSpec {
     pub current_class: LexemeClass,
     // regex for \xFF \[ [0-9]+ \]
     pub special_token_rx: Option<ExprRef>,
+    pub has_stop: bool,
+    pub has_max_tokens: bool,
 }
 
 #[derive(Clone, Copy, Hash, PartialEq, Eq, Debug)]
@@ -130,7 +132,21 @@ impl LexerSpec {
             num_extra_lexemes: 0,
             skip_by_class: Vec::new(),
             current_class: LexemeClass(0),
+            has_stop: false,
+            has_max_tokens: false,
         })
+    }
+
+    pub fn can_rollback(&self) -> bool {
+        !self.has_stop && !self.has_max_tokens
+    }
+
+    pub fn check_rollback(&self) -> Result<()> {
+        ensure!(
+            self.can_rollback(),
+            "rollback not supported with max_tokens=... or stop=... lexemes; suffix=... is OK"
+        );
+        Ok(())
     }
 
     /// Check if the lexeme always matches bytes.
@@ -243,6 +259,23 @@ impl LexerSpec {
         } else {
             self.regex_builder.mk(&spec.rx)?
         };
+
+        if !self.has_stop && !spec.is_suffix {
+            self.has_stop = match &spec.rx {
+                RegexAst::Concat(parts) => parts.iter().any(|part| match part {
+                    RegexAst::LookAhead(_) => true,
+                    _ => false,
+                }),
+                _ => false,
+            };
+            if spec.ends_at_eos {
+                self.has_stop = true;
+            }
+        }
+
+        if spec.max_tokens < usize::MAX {
+            self.has_max_tokens = true;
+        }
 
         let compiled = if let Some(ref opts) = spec.json_options {
             self.regex_builder.json_quote(compiled, opts)?
@@ -421,7 +454,16 @@ impl Debug for LexerSpec {
             let slex = lex.to_string(512, Some(self.regex_builder.exprset()));
             writeln!(f, "  {}", slex)?;
         }
-        write!(f, "] }}")
+        write!(
+            f,
+            "]{}{} }}",
+            if self.has_stop { " has_stop" } else { "" },
+            if self.has_max_tokens {
+                " has_max_tokens"
+            } else {
+                ""
+            }
+        )
     }
 }
 

@@ -93,6 +93,12 @@ impl XorShift {
         XorShift { seed }
     }
 
+    pub fn from_str(s: &str) -> Self {
+        XorShift {
+            seed: XorShift::fnv1a_32(s.as_bytes()),
+        }
+    }
+
     pub fn next(&mut self) -> u32 {
         let mut x = self.seed;
         x ^= x << 13;
@@ -119,6 +125,31 @@ impl XorShift {
         x ^= x << 23;
         self.seed = x;
         x
+    }
+
+    pub fn fnv1a_32(s: &[u8]) -> u32 {
+        let mut hash: u32 = 0x811c9dc5;
+        for byte in s {
+            hash ^= *byte as u32;
+            hash = hash.wrapping_mul(0x01000193);
+        }
+        hash
+    }
+
+    pub fn sample_from_vob(&mut self, vob: &SimpleVob) -> u32 {
+        let nset = vob.num_set();
+        assert!(nset > 0);
+        if nset > vob.len() / 10 {
+            loop {
+                let idx = self.from_range(0..vob.len());
+                if vob[idx] {
+                    return idx as u32;
+                }
+            }
+        } else {
+            let choices = vob.to_list();
+            choices[self.from_range(0..choices.len())]
+        }
     }
 }
 
@@ -330,7 +361,7 @@ impl RowInfo {
 //
 // The stack of lexer states also manages a virtual stack of Earley sets, via the
 // 'row_idx' field.  The current Earley table/stack is rows 0 through 'row_idx'.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 struct LexerState {
     row_idx: u32,         // Index of corresponding row (Earley set)
     lexer_state: StateID, // state after consuming 'byte'
@@ -380,6 +411,7 @@ struct ParserState {
     // (when walking the token trie). Otherwise, they represent the full parsing
     // history - items are not popped in definitive mode.
     lexer_stack: Vec<LexerState>,
+    lexer_stack_top_eos: bool,
     rows: Vec<Row>,
     rows_valid_end: usize,
 
@@ -464,7 +496,6 @@ impl Scratch {
         Row {
             first_item: self.row_start as u32,
             last_item: self.row_end as u32,
-            // TODO convert this to lexer state
             grammar_stack_ptr: self.push_grm_top,
             lexer_start_state,
             lexeme_idx: self.push_lexeme_idx,
@@ -573,6 +604,7 @@ impl ParserState {
             max_all_items: usize::MAX,
             limits,
             backtrack_byte_count: 0,
+            lexer_stack_top_eos: false,
             lexer_stack: vec![LexerState {
                 row_idx: 0,
                 lexer_state,
@@ -898,6 +930,36 @@ impl ParserState {
         }
     }
 
+    pub fn rollback(&mut self, n_bytes: usize) -> Result<()> {
+        debug!("rollback: {} bytes", n_bytes);
+        ensure!(self.parser_error.is_none(), "rollback: parser error");
+        self.assert_definitive();
+        ensure!(
+            n_bytes <= self.byte_to_token_idx.len(),
+            "rollback: too many bytes {} > {}",
+            n_bytes,
+            self.byte_to_token_idx.len()
+        );
+        self.check_lexer_bytes_invariant();
+
+        let new_len = self.byte_to_token_idx.len() - n_bytes;
+
+        self.byte_to_token_idx.truncate(new_len);
+        self.bytes.truncate(new_len);
+        self.lexer_stack.truncate(new_len + 1);
+
+        self.row_infos.truncate(self.num_rows());
+        self.token_idx = self.byte_to_token_idx.last().unwrap_or(&0).clone() as usize;
+        self.last_force_bytes_len = usize::MAX;
+        self.lexer_stack_top_eos = false;
+        self.rows_valid_end = self.num_rows();
+
+        self.assert_definitive();
+        self.check_lexer_bytes_invariant();
+
+        Ok(())
+    }
+
     pub fn validate_tokens(&mut self, tokens: &[TokenId]) -> usize {
         self.assert_definitive();
         self.run_speculative("validate_tokens", |state| {
@@ -970,9 +1032,10 @@ impl ParserState {
         })
     }
 
-    fn add_bytes_ignoring_lexer(&mut self, bytes: &[u8]) {
+    fn add_numeric_token(&mut self, idx: LexemeIdx, tok_bytes: &[u8]) -> Result<()> {
         let lexer_state = self.lexer_state();
-        for &b in bytes {
+        // the last lexer state will be pushed by advance_parser() below
+        for &b in &tok_bytes[0..tok_bytes.len() - 1] {
             self.lexer_stack.push(LexerState {
                 byte: Some(b),
                 ..lexer_state
@@ -980,16 +1043,12 @@ impl ParserState {
         }
 
         if self.scratch.definitive {
-            self.bytes.extend_from_slice(bytes);
-            for _ in 0..bytes.len() {
+            self.bytes.extend_from_slice(tok_bytes);
+            for _ in 0..tok_bytes.len() {
                 self.byte_to_token_idx
                     .push(self.token_idx.try_into().unwrap());
             }
         }
-    }
-
-    fn add_numeric_token(&mut self, idx: LexemeIdx, tok_bytes: &[u8]) -> Result<()> {
-        self.add_bytes_ignoring_lexer(tok_bytes);
         let ok = self.advance_parser(PreLexeme::just_idx(MatchingLexemesIdx::Single(idx)));
         ensure!(
             ok,
@@ -1328,9 +1387,27 @@ impl ParserState {
         }
     }
 
+    fn check_lexer_bytes_invariant(&self) {
+        let off = if self.lexer_stack_top_eos { 2 } else { 1 };
+        if self.lexer_stack.len() != self.bytes.len() + off {
+            panic!(
+                "lexer_stack={:?} bytes={:?} {}!={}+{off}",
+                self.lexer_stack,
+                String::from_utf8_lossy(&self.bytes),
+                self.lexer_stack.len(),
+                self.bytes.len()
+            );
+        }
+    }
+
     fn trie_started_inner(&mut self, lbl: &str) {
         // debug!("trie_started: rows={} lexer={}", self.num_rows(), self.lexer_stack.len());
         self.assert_definitive();
+
+        if self.lexer_spec().can_rollback() {
+            self.check_lexer_bytes_invariant();
+        }
+
         self.trie_lexer_stack = self.lexer_stack.len();
         self.trie_grammar_stack = self.scratch.grammar_stack.len();
         self.scratch.definitive = false;
@@ -1420,6 +1497,7 @@ impl ParserState {
             }
             let bt = std::mem::take(&mut self.backtrack_byte_count);
             if bt > 0 {
+                assert!(self.lexer_spec().has_stop);
                 // reset cache in case we hit the same length again in future
                 self.last_force_bytes_len = usize::MAX;
                 self.bytes.truncate(self.bytes.len() - bt);
@@ -1521,12 +1599,15 @@ impl ParserState {
 
     pub fn scan_eos(&mut self) -> bool {
         self.assert_definitive(); // ???
+        self.check_lexer_bytes_invariant();
 
         let lexer_eos = self.lexer_allows_eos();
 
         debug!("  scan eos: lexer_eos={}", lexer_eos);
 
+        let prev_stack = self.lexer_stack.len();
         if !self.flush_lexer() {
+            assert_eq!(self.lexer_stack.len(), prev_stack);
             debug!("  flush_lexer() failed");
             return false;
         }
@@ -1541,6 +1622,13 @@ impl ParserState {
         // if self.is_accepting() {
         //     return true;
         // }
+
+        if self.lexer_stack.len() != prev_stack {
+            assert_eq!(self.lexer_stack.len(), prev_stack + 1);
+            self.lexer_stack_top_eos = true;
+        }
+
+        self.check_lexer_bytes_invariant();
 
         return false;
     }
@@ -2634,6 +2722,11 @@ impl Parser {
         r
     }
 
+    pub fn rollback(&mut self, n_bytes: usize) -> Result<()> {
+        self.state.lexer_spec().check_rollback()?;
+        self.with_shared(|state| state.rollback(n_bytes))
+    }
+
     /// Returns how many tokens can be applied.
     pub fn validate_tokens(&mut self, tokens: &[TokenId]) -> usize {
         self.with_shared(|state| {
@@ -2649,18 +2742,20 @@ impl Parser {
     }
 
     pub fn log_row_infos(&mut self, label: &str) {
-        self.with_shared(|state| {
-            debug!(
-                "row infos {}: token_idx: {}; applied bytes: {}/{}",
-                label,
-                state.token_idx,
-                state.byte_to_token_idx.len(),
-                state.bytes.len()
-            );
-            for infos in state.row_infos.iter() {
-                debug!("  {}", infos.dbg(state.lexer()));
-            }
-        })
+        if cfg!(feature = "logging") && DEBUG {
+            self.with_shared(|state| {
+                debug!(
+                    "row infos {}: token_idx: {}; applied bytes: {}/{}",
+                    label,
+                    state.token_idx,
+                    state.byte_to_token_idx.len(),
+                    state.bytes.len()
+                );
+                for infos in state.row_infos.iter() {
+                    debug!("  {}", infos.dbg(state.lexer()));
+                }
+            })
+        }
     }
 
     pub fn is_accepting(&mut self) -> bool {
