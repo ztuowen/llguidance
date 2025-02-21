@@ -383,20 +383,6 @@ fn test_ll_temperature() {
 }
 
 #[test]
-fn test_ll_double_nested_temperature() {
-    // TODO https://github.com/guidance-ai/llguidance/issues/127
-    // check_lark_grammar_nested(
-    //     r#"start: sub_temp
-    //        sub_temp[temperature=0.5]: @sub
-    //     "#,
-    //     r#"start: json
-    //        json: %json { "type": "integer" }
-    //     "#,
-    //     &["", "1‧2‧≺EOS≻"],
-    // );
-}
-
-#[test]
 fn test_ll_backtrack_stop() {
     check_lark_grammar(
         r#"
