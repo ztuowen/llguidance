@@ -28,6 +28,7 @@ fn check_grammar(
 
     let parser = factory.create_parser(grammar).unwrap();
     let can_rollback = parser.parser.grammar().lexer_spec().can_rollback();
+    // let can_rollback = false;
     let mut parser2 = parser.deep_clone();
     let mut constraint = Constraint::new(parser);
 
@@ -406,6 +407,7 @@ pub fn check_lark_grammar_nested(lark: &str, sub_lark: &str, output: &[&str]) ->
 }
 
 pub fn check_lark_json(lark: &str, json_schema: serde_json::Value, output: &[&str]) -> Constraint {
+    let temp = find_temperature(lark);
     let schema_str = serde_json::to_string_pretty(&json_schema).unwrap();
     let mut top_grm = TopLevelGrammar::from_lark(lark.to_string());
     let mut sub_grm = GrammarWithLexer::from_json_schema(json_schema);
@@ -415,7 +417,7 @@ pub fn check_lark_json(lark: &str, json_schema: serde_json::Value, output: &[&st
         "\nChecking lark+json:\n{}\nNested:\n{}\nagainst: {:?}",
         lark, schema_str, output
     );
-    check_grammar(&PARSER_FACTORY, "", top_grm, output, 0.0)
+    check_grammar(&PARSER_FACTORY, "", top_grm, output, temp)
 }
 
 pub fn check_capture(c: &Constraint, name: &str, expected: &str) {
