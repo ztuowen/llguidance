@@ -320,6 +320,16 @@ fn test_ll_lexeme_subgrammar_max_tokens() {
 
 #[test]
 fn test_ll_temperature() {
+    check_lark_json(
+        r#"start: "JSON" j
+               j[temperature=0.3]: @sub
+            "#,
+        json!({
+            "type": "array"
+        }),
+        &["JSON", "[‧1‧,‧2‧]"],
+    );
+
     check_lark_grammar_nested(
         r#"start: /[xy]/ sub_temp
            sub_temp[temperature=0.5]: @sub
@@ -370,6 +380,20 @@ fn test_ll_temperature() {
         "#,
         &["", "foo"],
     );
+}
+
+#[test]
+fn test_ll_double_nested_temperature() {
+    // TODO https://github.com/guidance-ai/llguidance/issues/127
+    // check_lark_grammar_nested(
+    //     r#"start: sub_temp
+    //        sub_temp[temperature=0.5]: @sub
+    //     "#,
+    //     r#"start: json
+    //        json: %json { "type": "integer" }
+    //     "#,
+    //     &["", "1‧2‧≺EOS≻"],
+    // );
 }
 
 #[test]
