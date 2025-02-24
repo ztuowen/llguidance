@@ -394,6 +394,18 @@ impl Compiler {
             return Ok(id);
         }
         self.in_progress.insert(name.to_string());
+
+        let id = self.do_rule_core(name)?;
+
+        if let Some(placeholder) = self.node_ids.get(name) {
+            self.builder.set_placeholder(*placeholder, id);
+        }
+        self.node_ids.insert(name.to_string(), id);
+        self.in_progress.remove(name);
+        Ok(id)
+    }
+
+    fn do_rule_core(&mut self, name: &str) -> Result<NodeRef> {
         let g = self.grammar();
         let rule = g
             .rules
@@ -486,11 +498,6 @@ impl Compiler {
                 inner
             }
         };
-        if let Some(placeholder) = self.node_ids.get(name) {
-            self.builder.set_placeholder(*placeholder, id);
-        }
-        self.node_ids.insert(name.to_string(), id);
-        self.in_progress.remove(name);
         Ok(id)
     }
 

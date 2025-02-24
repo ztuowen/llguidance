@@ -430,6 +430,20 @@ fn test_llparser() {
         ],
     );
 
+    // version with no stop=""; see https://github.com/guidance-ai/llguidance/issues/129
+    check_lark_grammar(
+        r#"
+            start: "Power frequency is " num "Hz; voltage is " num "V"
+            num[max_tokens=5]: /[0-9]+/
+        "#,
+        &[
+            "Power‧ frequency‧ is‧ ",
+            "5‧0‧Hz",
+            ";‧ voltage‧ is‧ ",
+            "2‧2‧0‧V",
+        ],
+    );
+
     check_lark_grammar(
         r#"
             start: "Power frequency is " num "Hz; voltage is " num "V"
