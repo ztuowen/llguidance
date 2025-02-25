@@ -2,6 +2,7 @@ use crate::HashMap;
 use anyhow::{anyhow, Context, Result};
 use derivre::{JsonQuoteOptions, RegexAst};
 use indexmap::IndexMap;
+use serde::Deserialize;
 use serde_json::{json, Value};
 
 use super::numeric::{check_number_bounds, rx_float_range, rx_int_range, Decimal};
@@ -17,12 +18,14 @@ use crate::{
 // TODO: array maxItems etc limits
 // TODO: schemastore/src/schemas/json/BizTalkServerApplicationSchema.json - this breaks 1M fuel on lexer, why?!
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default, deny_unknown_fields)]
 pub struct JsonCompileOptions {
     pub item_separator: String,
     pub key_separator: String,
     pub whitespace_flexible: bool,
     pub coerce_one_of: bool,
+    #[serde(skip_deserializing)]
     pub retriever: Option<RetrieveWrapper>,
 }
 
