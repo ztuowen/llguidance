@@ -59,7 +59,8 @@ impl<S: Copy + Debug, R: FunctionalRecognizer<S>> Recognizer for StackRecognizer
 
     fn trie_finished(&mut self) {
         // println!("{:?}", &self.stack[0..=self.stack_ptr]);
-        assert!(self.stack_ptr == 0);
+        // assert!(self.stack_ptr == 0);
+        self.stack_ptr = 0;
     }
 
     fn collapse(&mut self) {

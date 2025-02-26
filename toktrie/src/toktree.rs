@@ -794,6 +794,10 @@ impl TokTrie {
         let suff_bytes =
             self.decode_raw(&tokens[tokens.len().saturating_sub(max_token_lookback)..]);
         let suff_bytes = &suff_bytes[suff_bytes.len().saturating_sub(self.max_token_len())..];
+        // let suff_bytes = self.decode_raw(tokens);
+        // let suff_bytes = &suff_bytes[suff_bytes.len().saturating_sub(6)..];
+
+        // let mut anything_goes = StackRecognizer::from(AnythingGoes {});
 
         for idx in 0..suff_bytes.len() {
             let suff = &suff_bytes[idx..];

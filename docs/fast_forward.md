@@ -129,3 +129,5 @@ examples where `max_token==4` is not enough, we have not bee able to do so.
 Note, that we can conservatively skip `grammar_allows()` check in the algorithm
 above, and thus just compute once and for all the set of tokens that are not allowed
 as the last token in forced bytes.
+This drops the proportion of forced tokens in maskbench from `12.7%` to `12.1%`.
+
