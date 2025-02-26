@@ -120,10 +120,11 @@ with `max_tokens` above set to at least `2` and the llama3 tokenizer,
 there are no non-canonical forced tokens.
 If `max_tokens==1`, there is `23` cases of non-canonical tokenization (among ~10k tests),
 however if `max_tokens==0` (ie., token healing is disabled),
-`97%` of fast-forwarded token sequences are non-canonical.
+almost all (`97%`) fast-forwarded token sequences are non-canonical.
+Alternatively, when `max_length` is set to at least `7` bytes, all forced tokens are canonical.
 
 While it [may be possible](https://arxiv.org/pdf/2309.08715) to construct
-examples where look-back of 4 is not enough, we have not bee able to do so.
+examples where `max_token==4` is not enough, we have not bee able to do so.
 
 Note, that we can conservatively skip `grammar_allows()` check in the algorithm
 above, and thus just compute once and for all the set of tokens that are not allowed
