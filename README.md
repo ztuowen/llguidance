@@ -47,6 +47,8 @@ Given a context-free grammar, a tokenizer, and a prefix of tokens, llguidance co
 
 The library implements a context-free grammar parser using Earley’s algorithm on top of a lexer based on [derivatives of regular expressions](https://github.com/microsoft/derivre). Mask computation is achieved by traversing the [prefix tree (trie)](./docs/toktrie.md) of all possible tokens, leveraging [highly optimized](./docs/optimizations.md) code.
 
+Grammars can be also used to speed up decode via [fast-forward tokens](./docs/fast_forward.md).
+
 ### Comparison and performance
 
 See [MaskBench](https://github.com/guidance-ai/jsonschemabench/tree/main/maskbench) in
