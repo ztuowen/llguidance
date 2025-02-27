@@ -1,6 +1,7 @@
 use anyhow::Result;
 use llguidance::{
-    api::TopLevelGrammar, earley::XorShift, substring::chunk_into_words, TokenParser,
+    api::TopLevelGrammar, earley::XorShift, substring::chunk_into_words, toktrie::bytes::limit_str,
+    TokenParser,
 };
 use sample_parser::*;
 
@@ -42,9 +43,19 @@ fn lark_err_test(lark: &str, err: &str) {
     }
 }
 
-fn lark_str_test(lark: &str, should_accept: bool, s: &str, quiet: bool) {
+fn lark_str_test(lark: &str, should_accept: bool, input: &str, quiet: bool) {
     let trie = get_tok_env().tok_trie();
-    let tokens = get_tok_env().tokenize(s);
+    let (final_reject, input) = if input.starts_with("FINAL_REJECT:") {
+        (true, &input[13..])
+    } else {
+        (false, input)
+    };
+    let tokens = get_tok_env().tokenize(input);
+    let info = format!(
+        "\ninput: {:?}, grm: {:?}",
+        limit_str(input, 500),
+        limit_str(lark, 100)
+    );
     if !quiet {
         println!(
             "\n\ntokens: {}, accpt={}\ngrm:\n{}\n",
@@ -64,18 +75,23 @@ fn lark_str_test(lark: &str, should_accept: bool, s: &str, quiet: bool) {
             consume(&mut p, *tok);
         } else {
             if should_accept {
-                panic!("unexpected token: {}", trie.token_dbg(*tok));
+                panic!("unexpected token: {}{info}", trie.token_dbg(*tok));
+            }
+            if final_reject {
+                panic!(
+                    "unexpected token: {}; expecting reject only at the end{info}",
+                    trie.token_dbg(*tok)
+                );
             }
             return;
         }
     }
-    if p.is_accepting() {
-        if !should_accept {
-            panic!("unexpected accept");
-        }
-    } else {
-        if should_accept {
-            panic!("unexpected reject");
+
+    if p.is_accepting() != !final_reject {
+        if p.is_accepting() {
+            panic!("unexpected accept{info}");
+        } else {
+            panic!("unexpected reject{info}");
         }
     }
 }
@@ -110,7 +126,7 @@ fn test_dot_unicode() {
         &[
             "aaabcccc",
             "aaaaabcccc",
-            "aaaabccc",
+            "FINAL_REJECT:aaaabccc",
             "aaaabccccc",
             "🔵🟠✅❌abc❌✅🟠🔵",
             "🔵🟠abc🟠🔵",
@@ -397,7 +413,7 @@ fn test_repeat() {
            ab:  "a" | "b"
         "#,
         &["aba", "abaa", "aaaaa", "aabaa"],
-        &["aa", "ab", "aaaaaa"],
+        &["FINAL_REJECT:aa", "FINAL_REJECT:ab", "aaaaaa"],
     );
 
     lark_str_test_many(
@@ -405,7 +421,7 @@ fn test_repeat() {
            ab:  "a" | "b"
         "#,
         &["aba", "abaa", "aaaaa", "aabaa", "aaaaaa"],
-        &["aa", "ab"],
+        &["FINAL_REJECT:aa", "FINAL_REJECT:ab"],
     );
 
     lark_str_test_many(
@@ -435,7 +451,7 @@ fn test_lexeme_substring_general() {
                 "A bar bazB",
                 "AB",
             ],
-            &["Afoo bar baz", "AfoB"],
+            &["FINAL_REJECT:Afoo bar baz", "AfoB"],
         );
     }
 
@@ -450,7 +466,7 @@ fn test_lexeme_substring_general() {
             "AB",
             "A bar bazB",
         ],
-        &["Afoo bar baz", "AfoB"],
+        &["FINAL_REJECT:Afoo bar baz", "AfoB"],
     );
 }
 
@@ -493,7 +509,7 @@ fn test_lexeme_substring_words_ascii() {
             "The quick brown fox",
             "dog.",
         ],
-        &["he quick brow", "fox jump", "brown fx"],
+        &["he quick brow", "FINAL_REJECT:fox jump", "brown fx"],
     );
 }
 
@@ -506,7 +522,7 @@ fn test_lexeme_substring_words_unicode() {
             "빠른 갈색 여우가 게으른",
             "뛰어넘었다.",
         ],
-        &["른 갈색 여우", "여우가 게으", "갈색 여가"],
+        &["른 갈색 여우", "FINAL_REJECT:여우가 게으", "갈색 여가"],
     );
 }
 
@@ -599,5 +615,67 @@ fn test_lexer_amb() {
         "#,
         &["'foo'a", "'foo'aaa", "'bar'b", "'bar'bbb", "'foo'bb"],
         &["'bar'a", "'bar'c"],
+    );
+}
+
+#[test]
+fn test_edits() {
+    let grm = r#"
+start: ( step "\n" )* step ( "\n" final_comments )?
+step: plan "\n" a_file
+plan[lazy]: /((.|\n)*\n)?```/
+final_comments: /[^`]*/
+
+replace: "=======\n" repl_inner " REPLACE\n```"
+repl_inner[lazy]: /(.|\n)*\n>>>>>>>/
+SEARCH: "\n<<<<<<< SEARCH\n"
+
+// "generated"
+
+file_0: "gbnf_to_lark.py" SEARCH FILE_0 replace
+a_file: file_0
+
+FILE_0: %regex {
+  "substring_chunks": [
+    "foo\n",
+    "bar\n",
+    "baz\n",
+    "line\n",
+    "line\n"
+  ]
+}
+"#;
+
+    fn repl_block(filename: &str, src: &str, dst: &str) -> String {
+        format!(
+            "```\n{}\n<<<<<<< SEARCH\n{}\n=======\n{}\n>>>>>>> REPLACE\n```",
+            filename,
+            src.trim_end_matches("\n"),
+            dst.trim_end_matches("\n")
+        )
+    }
+
+    let filename = "gbnf_to_lark.py";
+    let repl = repl_block(filename, "foo\nbar", "qux");
+
+    lark_str_test_many(
+        &grm,
+        &[
+            &repl,
+            &format!("{}\n", repl),
+            &format!("{}\n\n", repl),
+            &format!("Some text\n{}", repl),
+            &format!("Some text\nMore\n{}", repl),
+            &format!("Some text\nMore\n{}\n", repl),
+            &format!("Some text\nMore\n{}\nAnd then some", repl),
+            &format!("Some text\nMore\n{}\nAnd then some\n", repl),
+        ],
+        &[
+            "FINAL_REJECT:Some text\nSome more\n",
+            "FINAL_REJECT:Some text\nSome more",
+            "Foo\n```\nbar",
+            "FINAL_REJECT:Foo\n```\ngbnf",
+            &repl_block(filename, "fooz\nbar", "quux"),
+        ],
     );
 }

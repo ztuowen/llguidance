@@ -102,6 +102,8 @@ so that it is treated as a terminal (single lexeme, or regex and not a context-f
 BTW, in this case you may want to replace the JSON string definition
 with a definition of a Python string, depending on how the model was trained.
 
+### Reasoning/thinking
+
 Yet another example is "thinking" or reasoning models distilled from DeepSeek-R1.
 A grammar for forcing JSON may look like this:
 
