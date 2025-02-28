@@ -2,10 +2,12 @@ use std::{env, fs::File, hint::black_box, io::Read, vec};
 
 use llguidance::{
     api::{ParserLimits, TopLevelGrammar},
+    earley::XorShift,
     lark_to_llguidance,
     toktrie::{InferenceCapabilities, TokEnv},
     Constraint, JsonCompileOptions, TokenParser,
 };
+use serde_json::json;
 
 fn dump_tokenizer(name: &str) {
     let btok = toktrie_hf_tokenizers::ByteTokenizer::from_name(name).unwrap();
@@ -41,6 +43,15 @@ fn main() {
             .expect("Failed to convert JSON to LLG")
     } else if args[1].ends_with(".lark") {
         lark_to_llguidance(&schema_file).expect("Failed to convert lark to LLG")
+    } else if args[1].ends_with(".txt") {
+        // assume substring on words
+        TopLevelGrammar::from_lark(format!(
+            "start: \"foo\" sub\nsub: %regex {}",
+            serde_json::to_string(&json!({
+                "substring_words": schema_file
+            }))
+            .unwrap()
+        ))
     } else {
         panic!("Unknown schema file extension")
     };
@@ -57,6 +68,11 @@ fn main() {
 
     // typically set to 2, to send info-level output to the user
     let buffer_log_level = 2;
+
+    let t0 = std::time::Instant::now();
+
+    let mut limits = ParserLimits::default();
+    limits.initial_lexer_fuel *= 1;
 
     let parser = TokenParser::from_llguidance_json(
         tok_env.clone(),
@@ -81,6 +97,39 @@ fn main() {
     if args[2] == "SKIP" {
         constraint.start_without_prompt();
         let _ = constraint.compute_mask().unwrap();
+        return;
+    }
+
+    if args[2].starts_with("RND") {
+        let max_tokens = args[2][3..].parse::<usize>().unwrap_or(100);
+        constraint.start_without_prompt();
+        let mut rng = XorShift::new((max_tokens + 1) as u32);
+        let mut tokens = vec![];
+        let mut lens = vec![];
+        let trie = tok_env.tok_trie();
+        let mut prev_time = std::time::Instant::now();
+        let mut times = vec![prev_time.duration_since(t0).as_micros() as u64];
+        for _ in 0..max_tokens {
+            let r = constraint.compute_mask().unwrap();
+            times.push(prev_time.elapsed().as_micros() as u64);
+            prev_time = std::time::Instant::now();
+            if r.is_stop() {
+                break;
+            }
+            let mut v = r.sample_mask.clone().unwrap();
+            // mostly disallow eos to make it run longer
+            if !rng.one_in(5) {
+                v.disallow_token(trie.eos_token());
+            }
+            let t = rng.sample_from_vob(&v);
+            let r = constraint.commit_token(Some(t)).unwrap();
+            assert_eq!(r.backtrack, 0);
+            tokens.extend_from_slice(&r.ff_tokens);
+            lens.push(r.ff_tokens.len());
+        }
+        eprintln!("Lens: {:?}", lens);
+        eprintln!("Tokens:\n{}\n", trie.decode_str(&tokens));
+        eprintln!("Mask times: {:?}", times);
         return;
     }
 
