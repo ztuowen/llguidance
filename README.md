@@ -26,7 +26,7 @@ The internal format is most powerful (though Lark-like format is catching up, an
 - hopefully more to come!
 
 The library can be used from:
-- [Rust](./parser/README.md), [sample](./sample_parser/src/sample_parser.rs)
+- [Rust](./parser/README.md), [sample](./sample_parser/src/minimal.rs)
 - [C and C++](./parser/llguidance.h), [sample](./c_sample/c_sample.cpp)
 - [Python](./python/llguidance/_lib.pyi)
 

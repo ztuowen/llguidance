@@ -16,7 +16,7 @@ case "$1" in
         ../scripts/gbnf_to_lark.py data/from-llama.cpp/*.gbnf
         cargo build
         for f in data/from-llama.cpp/*.lark ; do
-            ../target/debug/sample_parser "$f" SKIP
+            ../target/debug/sample_parser "$f"
         done
         exit 0
         ;;
@@ -26,4 +26,4 @@ case "$1" in
         ;;
 esac
 
-cargo run -- $LARK SKIP
+cargo run -- $LARK

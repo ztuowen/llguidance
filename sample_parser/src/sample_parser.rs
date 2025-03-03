@@ -1,8 +1,9 @@
-use std::{env, fs::File, hint::black_box, io::Read, vec};
+use clap::Parser;
+use std::{fs::File, hint::black_box, io::Read, vec};
 
 use llguidance::{
     api::{ParserLimits, TopLevelGrammar},
-    earley::XorShift,
+    earley::{SlicedBiasComputer, XorShift},
     lark_to_llguidance,
     toktrie::{InferenceCapabilities, TokEnv},
     Constraint, JsonCompileOptions, TokenParser,
@@ -22,35 +23,85 @@ fn dump_tokenizer(name: &str) {
     }
 }
 
+#[derive(Parser, Debug, Default)]
+#[command(version, about, long_about = None)]
+pub struct CliOptions {
+    /// Print out tokenizer stuff
+    #[arg(long)]
+    dump_tokenizer: bool,
+
+    /// Specify HF tokenizer to use
+    #[arg(long, default_value = "microsoft/Phi-3.5-mini-instruct")]
+    tokenizer: String,
+
+    /// Input file for the grammar
+    #[arg(long, short = 'i')]
+    input: Option<String>,
+
+    /// Random seed
+    #[arg(long, default_value = "1")]
+    seed: u32,
+
+    /// Generate N random tokens for input
+    #[arg(long, short = 'r')]
+    rnd: Option<usize>,
+
+    /// Set stderr log level; 1 is warnings only, 2 is verbose (default: 1)
+    #[arg(long, short = 'l', default_value = "1")]
+    log_level: u32,
+
+    /// Verbose printing
+    #[arg(long, short = 'v')]
+    verbose: bool,
+
+    /// Split .txt input on words, not lines
+    #[arg(long)]
+    split_words: bool,
+
+    /// Repeat the operation N times for profiling
+    #[arg(long, default_value = "1")]
+    repeat: usize,
+
+    /// Increase lexer limit N times
+    #[arg(long, default_value = "1")]
+    lexer_limit: usize,
+
+    /// .ll.json/.schema.json/.lark/.txt file
+    #[arg(value_name = "GRAMMAR")]
+    file: String,
+}
+
 fn main() {
-    if false {
-        dump_tokenizer("microsoft/Phi-3.5-mini-instruct");
+    let opts = CliOptions::parse();
+    if opts.dump_tokenizer {
+        dump_tokenizer(&opts.tokenizer);
+        return;
     }
 
-    let args: Vec<String> = env::args().collect();
-    if args.len() != 3 {
-        eprintln!("Usage: {} <schema.ll.json> <sample.json>", args[0]);
-        std::process::exit(1);
-    }
-
-    let schema_file = read_file_to_string(&args[1]);
-    let schema: TopLevelGrammar = if args[1].ends_with(".ll.json") {
-        serde_json::from_str(&schema_file).expect("Invalid JSON in schema")
-    } else if args[1].ends_with(".schema.json") {
+    let grammar_file = read_file_to_string(&opts.file);
+    let grammar: TopLevelGrammar = if opts.file.ends_with(".ll.json") {
+        serde_json::from_str(&grammar_file).expect("Invalid JSON in schema")
+    } else if opts.file.ends_with(".schema.json") {
         let opts = JsonCompileOptions::default();
-        let val = serde_json::from_str(&schema_file).expect("Invalid JSON in schema");
+        let val = serde_json::from_str(&grammar_file).expect("Invalid JSON in schema");
         opts.json_to_llg(val)
             .expect("Failed to convert JSON to LLG")
-    } else if args[1].ends_with(".lark") {
-        lark_to_llguidance(&schema_file).expect("Failed to convert lark to LLG")
-    } else if args[1].ends_with(".txt") {
-        // assume substring on words
+    } else if opts.file.ends_with(".lark") {
+        lark_to_llguidance(&grammar_file).expect("Failed to convert lark to LLG")
+    } else if opts.file.ends_with(".txt") {
+        let regex_opts = if opts.split_words {
+            json!({
+                "substring_words": grammar_file
+            })
+        } else {
+            let lines = grammar_file.split_inclusive('\n').collect::<Vec<_>>();
+            json!({
+                "substring_chunks": lines
+            })
+        };
         TopLevelGrammar::from_lark(format!(
             "start: \"foo\" sub\nsub: %regex {}",
-            serde_json::to_string(&json!({
-                "substring_words": schema_file
-            }))
-            .unwrap()
+            serde_json::to_string(&regex_opts).unwrap()
         ))
     } else {
         panic!("Unknown schema file extension")
@@ -58,35 +109,37 @@ fn main() {
 
     // you can implement TokEnv yourself, if you have the tokenizer
     // see the ByteTokenizerEnv for an example
-    let tok_env: TokEnv =
-        toktrie_hf_tokenizers::ByteTokenizerEnv::from_name("microsoft/Phi-3.5-mini-instruct", None)
-            .unwrap()
-            .to_env();
+    let tok_env: TokEnv = toktrie_hf_tokenizers::ByteTokenizerEnv::from_name(&opts.tokenizer, None)
+        .unwrap()
+        .to_env();
 
     // set to 2 for more output; 1 is warnings only
-    let stderr_log_level = 1;
+    let stderr_log_level = opts.log_level;
 
     // typically set to 2, to send info-level output to the user
     let buffer_log_level = 2;
 
-    let t0 = std::time::Instant::now();
+    let mut t0 = std::time::Instant::now();
 
     let mut limits = ParserLimits::default();
-    limits.initial_lexer_fuel *= 1;
+    limits.initial_lexer_fuel *= opts.lexer_limit as u64;
+    limits.step_lexer_fuel *= opts.lexer_limit as u64;
+
+    let infer_caps = InferenceCapabilities {
+        ff_tokens: true,  // can the engine append multiple tokens?
+        backtrack: false, // can the engine remove generated tokens?
+
+        conditional_ff_tokens: false, // not used
+        fork: false,                  // not used
+    };
 
     let parser = TokenParser::from_llguidance_json(
         tok_env.clone(),
-        schema,
+        grammar.clone(),
         llguidance::Logger::new(buffer_log_level, stderr_log_level),
-        InferenceCapabilities {
-            ff_tokens: true,  // can the engine append multiple tokens?
-            backtrack: false, // can the engine remove generated tokens?
-
-            conditional_ff_tokens: false, // not used
-            fork: false,                  // not used
-        },
-        ParserLimits::default(),
-        vec![],
+        infer_caps.clone(),
+        limits.clone(),
+        SlicedBiasComputer::general_slices(),
     )
     .unwrap();
     let mut constraint = Constraint::new(parser);
@@ -94,48 +147,66 @@ fn main() {
     // enable sending parser results back via the logs (constraint.flush_logs())
     constraint.log_json_progress = true;
 
-    if args[2] == "SKIP" {
+    if opts.input.is_none() && opts.rnd.is_none() {
         constraint.start_without_prompt();
         let _ = constraint.compute_mask().unwrap();
         return;
     }
 
-    if args[2].starts_with("RND") {
-        let max_tokens = args[2][3..].parse::<usize>().unwrap_or(100);
-        constraint.start_without_prompt();
-        let mut rng = XorShift::new((max_tokens + 1) as u32);
-        let mut tokens = vec![];
-        let mut lens = vec![];
-        let trie = tok_env.tok_trie();
-        let mut prev_time = std::time::Instant::now();
-        let mut times = vec![prev_time.duration_since(t0).as_micros() as u64];
-        for _ in 0..max_tokens {
-            let r = constraint.compute_mask().unwrap();
-            times.push(prev_time.elapsed().as_micros() as u64);
-            prev_time = std::time::Instant::now();
-            if r.is_stop() {
+    if let Some(max_tokens) = opts.rnd {
+        for rep in 0..opts.repeat {
+            constraint.start_without_prompt();
+            let mut rng = XorShift::new(opts.seed);
+            let mut tokens = vec![];
+            let mut lens = vec![];
+            let trie = tok_env.tok_trie();
+            let mut prev_time = std::time::Instant::now();
+            let mut times = vec![prev_time.duration_since(t0).as_micros() as u64];
+            for _ in 0..max_tokens {
+                let r = constraint.compute_mask().unwrap();
+                times.push(prev_time.elapsed().as_micros() as u64);
+                prev_time = std::time::Instant::now();
+                if r.is_stop() {
+                    break;
+                }
+                let mut v = r.sample_mask.clone().unwrap();
+                // mostly disallow eos to make it run longer
+                if !rng.one_in(5) {
+                    v.disallow_token(trie.eos_token());
+                }
+                let t = rng.sample_from_vob(&v);
+                let r = constraint.commit_token(Some(t)).unwrap();
+                assert_eq!(r.backtrack, 0);
+                tokens.extend_from_slice(&r.ff_tokens);
+                lens.push(r.ff_tokens.len());
+            }
+            if opts.repeat == 1 {
+                eprintln!("Lens: {:?}", lens);
+                eprintln!("Tokens:\n{}\n", trie.decode_str(&tokens));
+            }
+            eprintln!("Mask times: {:?}", times);
+            if rep + 1 == opts.repeat {
                 break;
             }
-            let mut v = r.sample_mask.clone().unwrap();
-            // mostly disallow eos to make it run longer
-            if !rng.one_in(5) {
-                v.disallow_token(trie.eos_token());
-            }
-            let t = rng.sample_from_vob(&v);
-            let r = constraint.commit_token(Some(t)).unwrap();
-            assert_eq!(r.backtrack, 0);
-            tokens.extend_from_slice(&r.ff_tokens);
-            lens.push(r.ff_tokens.len());
+
+            t0 = std::time::Instant::now();
+            let parser = TokenParser::from_llguidance_json(
+                tok_env.clone(),
+                grammar.clone(),
+                llguidance::Logger::new(buffer_log_level, stderr_log_level),
+                infer_caps.clone(),
+                limits.clone(),
+                SlicedBiasComputer::general_slices(),
+            )
+            .unwrap();
+            constraint = Constraint::new(parser);
         }
-        eprintln!("Lens: {:?}", lens);
-        eprintln!("Tokens:\n{}\n", trie.decode_str(&tokens));
-        eprintln!("Mask times: {:?}", times);
         return;
     }
 
     let trie = tok_env.tok_trie();
 
-    let obj_str = read_file_to_string(&args[2]);
+    let obj_str = read_file_to_string(opts.input.as_ref().unwrap());
     let tokens = tok_env.tokenize(&obj_str);
     eprintln!("Parsing tokens: {}", trie.tokens_dbg(&tokens));
 
@@ -161,19 +232,23 @@ fn main() {
             black_box(constraint.temperature);
 
             let p_stats = constraint.parser.last_step_stats();
-            println!(
-                "SAMPLE {}: {} {}; stats: {} lex, {} items, {} us",
-                idx,
-                sampled_token,
-                tok_env.tok_trie().token_dbg(sampled_token),
-                p_stats.lexer_cost,
-                p_stats.all_items,
-                p_stats.compute_time_us,
-            );
+            if opts.verbose {
+                println!(
+                    "SAMPLE {}: {} {}; stats: {} lex, {} items, {} us",
+                    idx,
+                    sampled_token,
+                    tok_env.tok_trie().token_dbg(sampled_token),
+                    p_stats.lexer_cost,
+                    p_stats.all_items,
+                    p_stats.compute_time_us,
+                );
+            }
             Some(sampled_token)
         } else {
             // sampling not required
-            println!("NO SAMPLE");
+            if opts.verbose {
+                println!("NO SAMPLE {}", idx);
+            }
             None
         };
 
@@ -203,7 +278,7 @@ fn main() {
             );
         }
 
-        if splice.ff_tokens.len() > 1 {
+        if splice.ff_tokens.len() > 1 && opts.verbose {
             println!("FF: {}", trie.tokens_dbg(&splice.ff_tokens));
         }
 

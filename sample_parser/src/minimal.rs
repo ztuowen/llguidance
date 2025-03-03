@@ -65,6 +65,8 @@ fn main() {
 
     let tokens = tok_env.tokenize(&obj_str);
 
+    let verbose = false;
+
     // set to 2 for more output; 1 is warnings only
     let stderr_log_level = 1;
 
@@ -110,16 +112,20 @@ fn main() {
             black_box(constraint.temperature);
             let sampled_token = tokens[idx];
 
-            println!(
-                "SAMPLE {}: {} {}",
-                idx,
-                sampled_token,
-                tok_env.tok_trie().token_dbg(sampled_token)
-            );
+            if verbose {
+                println!(
+                    "SAMPLE {}: {} {}",
+                    idx,
+                    sampled_token,
+                    tok_env.tok_trie().token_dbg(sampled_token)
+                );
+            }
             Some(sampled_token)
         } else {
             // sampling not required
-            println!("NO SAMPLE");
+            if verbose {
+                println!("NO SAMPLE");
+            }
             None
         };
 

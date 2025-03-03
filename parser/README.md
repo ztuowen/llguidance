@@ -32,4 +32,4 @@ and/or grammars, so you should arrange for it be executed in background,
 while the logits are computed on the GPU or other CPU cores.
 The `commit_token()` function is very fast and can be called in the main loop.
 
-See [sample parser](../sample_parser/src/sample_parser.rs) for an example of how to use this crate.
+See [sample parser](../sample_parser/src/minimal.rs) for an example of how to use this crate.
