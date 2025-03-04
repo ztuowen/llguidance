@@ -71,18 +71,13 @@ impl<'a> LimitedWriter<'a> {
 impl<'a> Write for LimitedWriter<'a> {
     fn write_str(&mut self, s: &str) -> fmt::Result {
         let remaining = self.max_len.saturating_sub(self.buf.len());
-        if remaining == 0 {
-            return Err(fmt::Error); // Return Err if capacity is exceeded
+        if s.len() > remaining {
+            self.buf.extend_from_slice(&s.as_bytes()[..remaining]);
+            Err(fmt::Error)
+        } else {
+            self.buf.extend_from_slice(s.as_bytes());
+            Ok(())
         }
-
-        let to_write = &s.as_bytes()[..remaining.min(s.len())];
-        self.buf.extend_from_slice(to_write);
-
-        if self.buf.len() > self.max_len {
-            return Err(fmt::Error); // Return Err if capacity is exceeded
-        }
-
-        Ok(())
     }
 }
 
@@ -90,8 +85,8 @@ pub fn limit_display(obj: impl Display, max_len: usize) -> String {
     let mut buffer = Vec::new();
     let mut writer = LimitedWriter::new(&mut buffer, max_len);
 
-    let mut exceeded = write!(writer, "{}", obj).is_err();
-    buffer.truncate(max_len);
+    let r = write!(writer, "{}", obj);
+    let mut exceeded = r.is_err();
     let mut valid_str = match String::from_utf8(buffer) {
         Ok(s) => s,
         Err(e) => {
@@ -128,7 +123,7 @@ mod tests {
     #[test]
     fn test_truncate_with_ellipsis() {
         let result = limit_display("This is a long string", 10);
-        assert_eq!(result, "This is...");
+        assert_eq!(result, "This is a ...");
     }
 
     #[test]
