@@ -220,7 +220,7 @@ fn test_lark_syntax_general() {
             start: BAR
             BAR: BAZ "a"
         "#,
-        r#"token "BAZ" not found"#,
+        r#"unknown name: "BAZ""#,
     );
 
     lark_ok(

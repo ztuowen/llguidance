@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use crate::{HashMap, HashSet};
 use anyhow::{anyhow, bail, ensure, Result};
 
@@ -44,7 +42,7 @@ struct Compiler {
     builder: GrammarBuilder,
     additional_grammars: Vec<GrammarWithLexer>,
     parsed: ParsedLark,
-    grammar: Arc<Grammar>,
+    grammar: Grammar,
     node_ids: HashMap<String, NodeRef>,
     regex_ids: HashMap<String, RegexId>,
     in_progress: HashSet<String>,
@@ -56,7 +54,7 @@ fn compile_lark(parsed: ParsedLark) -> Result<TopLevelGrammar> {
         test_rx: derivre::RegexBuilder::new(),
         additional_grammars: vec![],
         parsed,
-        grammar: Arc::new(Grammar::default()),
+        grammar: Grammar::default(),
         node_ids: HashMap::default(),
         regex_ids: HashMap::default(),
         in_progress: HashSet::default(),
@@ -75,10 +73,6 @@ pub fn lark_to_llguidance(lark: &str) -> Result<TopLevelGrammar> {
 }
 
 impl Compiler {
-    fn grammar(&self) -> Arc<Grammar> {
-        Arc::clone(&self.grammar)
-    }
-
     fn do_token(&mut self, name: &str) -> Result<RegexId> {
         if let Some(id) = self.regex_ids.get(name) {
             return Ok(*id);
@@ -87,12 +81,12 @@ impl Compiler {
             bail!("circular reference in token {:?} definition", name);
         }
         self.in_progress.insert(name.to_string());
-        let g = self.grammar();
-        let token = g
+        let token = self
+            .grammar
             .tokens
-            .get(name)
-            .ok_or_else(|| anyhow!("token {:?} not found", name))?;
-        let id = self.do_token_expansions(&token.expansions)?;
+            .remove(name)
+            .ok_or_else(|| anyhow!("unknown name: {:?}", name))?;
+        let id = self.do_token_expansions(token.expansions)?;
         self.regex_ids.insert(name.to_string(), id);
         self.in_progress.remove(name);
         Ok(id)
@@ -105,7 +99,7 @@ impl Compiler {
         Ok(self.builder.regex.regex(rx))
     }
 
-    fn do_token_atom(&mut self, atom: &Atom) -> Result<RegexId> {
+    fn do_token_atom(&mut self, atom: Atom) -> Result<RegexId> {
         match atom {
             Atom::Group(expansions) => self.do_token_expansions(expansions),
             Atom::Maybe(expansions) => {
@@ -137,27 +131,27 @@ impl Compiler {
                         bail!("invalid range order: {:?}..{:?}", a, b);
                     }
                 }
-                Value::Name(n) => self.do_token(n),
+                Value::Name(n) => self.do_token(&n),
                 Value::LiteralString(val, flags) => {
                     if flags.contains("i") {
                         self.mk_regex(
                             "string with i-flag",
-                            format!("(?i){}", regex_syntax::escape(val)),
+                            format!("(?i){}", regex_syntax::escape(&val)),
                         )
                     } else {
-                        Ok(self.builder.regex.literal(val.clone()))
+                        Ok(self.builder.regex.literal(val))
                     }
                 }
                 Value::LiteralRegex(val, flags) => {
                     ensure!(!flags.contains("l"), "l-flag is not supported in regexes");
                     let rx = if flags.is_empty() {
-                        val.clone()
+                        val
                     } else {
                         format!("(?{}){}", flags, val)
                     };
                     self.mk_regex("regex", rx)
                 }
-                Value::RegexExt(s) => compile_lark_regex(&mut self.builder, s.clone()),
+                Value::RegexExt(s) => compile_lark_regex(&mut self.builder, s),
                 Value::SpecialToken(s) => {
                     bail!("special tokens (like {:?}) cannot be used in terminals", s);
                 }
@@ -175,8 +169,8 @@ impl Compiler {
         }
     }
 
-    fn do_token_expr(&mut self, expr: &Expr) -> Result<RegexId> {
-        let atom = self.do_token_atom(&expr.atom)?;
+    fn do_token_expr(&mut self, expr: Expr) -> Result<RegexId> {
+        let atom = self.do_token_atom(expr.atom)?;
         if let Some(range) = &expr.range {
             ensure!(expr.op.is_none(), "ranges not supported with operators");
             ensure!(range.0 >= 0, "range start must be >= 0, got {:?}", range);
@@ -209,15 +203,15 @@ impl Compiler {
         }
     }
 
-    fn do_token_expansions(&mut self, expansions: &Expansions) -> Result<RegexId> {
+    fn do_token_expansions(&mut self, expansions: Expansions) -> Result<RegexId> {
         let options = expansions
             .1
-            .iter()
+            .into_iter()
             .map(|alias| {
                 let args = alias
                     .expansion
                     .0
-                    .iter()
+                    .into_iter()
                     .map(|e| self.do_token_expr(e))
                     .collect::<Result<Vec<_>>>()?;
                 Ok(self.builder.regex.concat(args))
@@ -241,7 +235,7 @@ impl Compiler {
         }
     }
 
-    fn do_atom(&mut self, expr: &Atom) -> Result<NodeRef> {
+    fn do_atom(&mut self, expr: Atom) -> Result<NodeRef> {
         match expr {
             Atom::Group(expansions) => self.do_expansions(expansions),
             Atom::Maybe(expansions) => {
@@ -249,14 +243,12 @@ impl Compiler {
                 Ok(self.builder.optional(id))
             }
             Atom::Value(value) => {
-                match value {
+                match &value {
                     Value::Name(n) => {
-                        if self.grammar.rules.contains_key(n) {
+                        if self.is_rule(n) {
                             return self.do_rule(n);
-                        } else if self.grammar.tokens.contains_key(n) {
-                            // OK -> treat as token
                         } else {
-                            bail!("unknown name: {:?}", n);
+                            // OK -> treat as token
                         }
                     }
                     Value::SpecialToken(s) => {
@@ -285,21 +277,26 @@ impl Compiler {
                             ensure!(!ranges.is_empty(), "empty token range");
                             return Ok(self.builder.token_ranges(ranges));
                         }
-                        return Ok(self.builder.special_token(s));
+                        return Ok(self.builder.special_token(&s));
                     }
                     Value::GrammarRef(g) => {
                         return Ok(self.builder.gen_grammar(
                             GenGrammarOptions {
-                                grammar: Compiler::get_grammar_id(g),
+                                grammar: Compiler::get_grammar_id(&g),
                                 temperature: None,
                             },
                             NodeProps::default(),
                         ));
                     }
-                    Value::Json(s) => {
+                    Value::Json(_) => {
+                        // consume value
+                        let s = match value {
+                            Value::Json(s) => s,
+                            _ => unreachable!(),
+                        };
                         let opts = JsonCompileOptions::default();
                         let mut grm = opts
-                            .json_to_llg_no_validate(s.clone())
+                            .json_to_llg_no_validate(s)
                             .map_err(|e| anyhow!("failed to compile JSON schema: {}", e))?;
                         assert!(grm.grammars.len() == 1);
                         let mut g = grm.grammars.pop().unwrap();
@@ -326,14 +323,14 @@ impl Compiler {
                         bail!("template usage not supported yet");
                     }
                 };
-                let rx = self.do_token_atom(expr)?;
+                let rx = self.do_token_atom(Atom::Value(value))?;
                 Ok(self.lift_regex(rx)?)
             }
         }
     }
 
-    fn do_expr(&mut self, expr: &Expr) -> Result<NodeRef> {
-        let atom = self.do_atom(&expr.atom)?;
+    fn do_expr(&mut self, expr: Expr) -> Result<NodeRef> {
+        let atom = self.do_atom(expr.atom)?;
 
         if let Some((a, b)) = expr.range {
             ensure!(expr.op.is_none(), "ranges not supported with operators");
@@ -363,15 +360,15 @@ impl Compiler {
         }
     }
 
-    fn do_expansions(&mut self, expansions: &Expansions) -> Result<NodeRef> {
+    fn do_expansions(&mut self, expansions: Expansions) -> Result<NodeRef> {
         let options = expansions
             .1
-            .iter()
+            .into_iter()
             .map(|alias| {
                 let args = alias
                     .expansion
                     .0
-                    .iter()
+                    .into_iter()
                     .map(|e| self.do_expr(e))
                     .collect::<Result<Vec<_>>>()?;
                 Ok(self.builder.join(&args))
@@ -379,6 +376,12 @@ impl Compiler {
             .collect::<Result<Vec<_>>>()
             .map_err(|e| expansions.0.augment(e))?;
         Ok(self.builder.select(&options))
+    }
+
+    fn is_rule(&self, name: &str) -> bool {
+        self.node_ids.contains_key(name)
+            || self.in_progress.contains(name)
+            || self.grammar.rules.contains_key(name)
     }
 
     fn do_rule(&mut self, name: &str) -> Result<NodeRef> {
@@ -403,10 +406,10 @@ impl Compiler {
     }
 
     fn do_rule_core(&mut self, name: &str) -> Result<NodeRef> {
-        let g = self.grammar();
-        let rule = g
+        let rule = self
+            .grammar
             .rules
-            .get(name)
+            .remove(name)
             .ok_or_else(|| anyhow!("rule {:?} not found", name))?;
 
         let props = NodeProps {
@@ -420,9 +423,11 @@ impl Compiler {
         }
 
         let id = if let Some(stop) = rule.stop_like() {
-            let rx_id = self.do_token_expansions(&rule.expansions)?;
-            let stop_id = self.do_token_atom(&Atom::Value(stop.clone()))?;
             let is_empty = matches!(stop, Value::LiteralString(s, _) if s.is_empty());
+            let stop_val = Atom::Value(stop.clone());
+            let lazy = rule.is_lazy();
+            let rx_id = self.do_token_expansions(rule.expansions)?;
+            let stop_id = self.do_token_atom(stop_val)?;
 
             self.builder.gen(
                 GenOptions {
@@ -433,7 +438,7 @@ impl Compiler {
                         RegexSpec::RegexId(stop_id)
                     },
                     stop_capture_name: rule.stop_capture_name.clone(),
-                    lazy: Some(rule.is_lazy()),
+                    lazy: Some(lazy),
                     temperature: rule.temperature,
                     is_suffix: Some(rule.suffix.is_some()),
                 },
@@ -457,7 +462,7 @@ impl Compiler {
                     }
                     _ => {
                         // try as terminal
-                        let rx_id = self.do_token_expansions(&rule.expansions).map_err(|e| {
+                        let rx_id = self.do_token_expansions(rule.expansions).map_err(|e| {
                             anyhow::anyhow!(
                                 "{}; temperature= and max_tokens= only \
                                 supported on TERMINALS and @subgrammars",
@@ -477,7 +482,7 @@ impl Compiler {
                 }
             }
 
-            let inner = self.do_expansions(&rule.expansions)?;
+            let inner = self.do_expansions(rule.expansions)?;
             if let Some(max_tokens) = rule.max_tokens {
                 assert!(false, "max_tokens handled above for now");
                 self.builder.join_props(
@@ -511,7 +516,7 @@ impl Compiler {
             start_name
         );
         let ignore = std::mem::take(&mut grm.ignore);
-        self.grammar = Arc::new(grm);
+        self.grammar = grm;
 
         let opts: LLGuidanceOptions =
             serde_json::from_value(self.grammar.llguidance_options.clone())
@@ -521,7 +526,7 @@ impl Compiler {
         self.builder.add_grammar(grm_with_lex);
 
         let ignore = ignore
-            .iter()
+            .into_iter()
             .map(|exp| self.do_token_expansions(exp))
             .collect::<Result<Vec<_>>>()?;
         let start = self.do_rule(start_name)?;
@@ -582,11 +587,11 @@ impl Grammar {
                 }
             }
             Statement::LLGuidance(json_value) => {
-                // first, check if it's valid JSON and all the right types
-                let _v: LLGuidanceOptions = serde_json::from_value(json_value.clone())
-                    .map_err(|e| anyhow!("failed to parse %llguidance declaration: {}", e))?;
-                // but in fact, we'll work on JSON object
+                // merge-in at the JSON level
                 json_merge(&mut self.llguidance_options, &json_value);
+                // but also check if it's valid format and all the right types
+                let _v: LLGuidanceOptions = serde_json::from_value(json_value)
+                    .map_err(|e| anyhow!("failed to parse %llguidance declaration: {}", e))?;
             }
             Statement::OverrideRule(_) => {
                 bail!("override statement not supported yet");
