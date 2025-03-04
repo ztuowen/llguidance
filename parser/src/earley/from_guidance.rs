@@ -152,6 +152,7 @@ fn grammar_from_json(
         input.nodes = g.nodes;
         input.rx_nodes = g.rx_nodes;
         input.contextual = g.contextual;
+        input.size_hint = g.size_hint;
 
         input.options.apply(&g.options);
 
@@ -173,6 +174,13 @@ fn grammar_from_json(
 
     lexer_spec.regex_builder.utf8(utf8);
     lexer_spec.regex_builder.unicode(utf8);
+
+    if let Some(sz) = input.size_hint {
+        let n = std::cmp::min(sz / 8, 1_000_000);
+        lexer_spec.regex_builder.reserve(n);
+    } else {
+        lexer_spec.regex_builder.reserve(input.rx_nodes.len() * 2);
+    }
 
     let rx_nodes = regex_nodes_to_derivre(&mut lexer_spec.regex_builder, limits, input.rx_nodes)?;
     let skip = match input.greedy_skip_rx {

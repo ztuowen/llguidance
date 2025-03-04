@@ -68,7 +68,10 @@ fn compile_lark(parsed: ParsedLark) -> Result<TopLevelGrammar> {
 }
 
 pub fn lark_to_llguidance(lark: &str) -> Result<TopLevelGrammar> {
-    parse_lark(lark).and_then(compile_lark)
+    let parsed = parse_lark(lark)?;
+    let mut compiled = compile_lark(parsed)?;
+    compiled.grammars[0].size_hint = Some(lark.len());
+    Ok(compiled)
 }
 
 impl Compiler {
@@ -154,9 +157,7 @@ impl Compiler {
                     };
                     self.mk_regex("regex", rx)
                 }
-                Value::RegexExt(s) => {
-                    compile_lark_regex(&mut self.builder, s.clone())
-                }
+                Value::RegexExt(s) => compile_lark_regex(&mut self.builder, s.clone()),
                 Value::SpecialToken(s) => {
                     bail!("special tokens (like {:?}) cannot be used in terminals", s);
                 }

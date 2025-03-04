@@ -81,6 +81,9 @@ pub struct GrammarWithLexer {
     /// The default value for 'contextual' in Lexeme nodes.
     pub contextual: Option<bool>,
 
+    /// Help allocating the right amount of memory for the lexer.
+    pub size_hint: Option<usize>,
+
     /// When set, the regexps can be referenced by their id (position in this list).
     #[serde(default)]
     pub rx_nodes: Vec<RegexNode>,

@@ -154,6 +154,7 @@ fn main() {
     }
 
     if let Some(max_tokens) = opts.rnd {
+        let mut ttfm = vec![];
         for rep in 0..opts.repeat {
             constraint.start_without_prompt();
             let mut rng = XorShift::new(opts.seed);
@@ -162,6 +163,7 @@ fn main() {
             let trie = tok_env.tok_trie();
             let mut prev_time = std::time::Instant::now();
             let mut times = vec![prev_time.duration_since(t0).as_micros() as u64];
+            ttfm.push(times[0]);
             for _ in 0..max_tokens {
                 let r = constraint.compute_mask().unwrap();
                 times.push(prev_time.elapsed().as_micros() as u64);
@@ -201,6 +203,9 @@ fn main() {
             .unwrap();
             constraint = Constraint::new(parser);
         }
+        ttfm.sort();
+        eprintln!("Min ttfm: {:?}", ttfm[0]);
+        eprintln!("Median ttfm: {:?}", ttfm[ttfm.len() / 2]);
         return;
     }
 
