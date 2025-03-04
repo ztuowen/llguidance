@@ -1,12 +1,13 @@
 use anyhow::Result;
 use derivre::{ExprRef, RegexBuilder};
-use std::{collections::HashMap, vec};
+use std::collections::{hash_map::Entry, HashMap};
 
 #[derive(Debug)]
 struct State<'a> {
     len: usize,
     link: Option<usize>,
     next: HashMap<&'a str, usize>,
+    regex: Option<ExprRef>,
 }
 
 /// For details see https://en.wikipedia.org/wiki/Suffix_automaton.
@@ -22,6 +23,7 @@ impl<'a> SuffixAutomaton<'a> {
             len: 0,
             link: None,
             next: HashMap::default(),
+            regex: None,
         };
         SuffixAutomaton {
             states: vec![init_state],
@@ -43,15 +45,18 @@ impl<'a> SuffixAutomaton<'a> {
             len: self.states[self.last].len + 1,
             link: None,
             next: HashMap::default(),
+            regex: None,
         });
 
         let mut p = Some(self.last);
         while let Some(pp) = p {
-            if self.states[pp].next.contains_key(&s) {
-                break;
+            match self.states[pp].next.entry(&s) {
+                Entry::Occupied(_) => break,
+                Entry::Vacant(entry) => {
+                    entry.insert(cur_index);
+                    p = self.states[pp].link;
+                }
             }
-            self.states[pp].next.insert(s, cur_index);
-            p = self.states[pp].link;
         }
 
         if let Some(pp) = p {
@@ -64,6 +69,7 @@ impl<'a> SuffixAutomaton<'a> {
                     len: self.states[pp].len + 1,
                     link: self.states[q].link,
                     next: self.states[q].next.clone(),
+                    regex: None,
                 });
                 while let Some(ppp) = p {
                     if self.states[ppp].next[&s] == q {
@@ -84,46 +90,47 @@ impl<'a> SuffixAutomaton<'a> {
 }
 
 pub fn substring(builder: &mut RegexBuilder, chunks: Vec<&str>) -> Result<ExprRef> {
-    let sa = SuffixAutomaton::from_string(chunks);
+    let mut sa = SuffixAutomaton::from_string(chunks);
     let mut state_stack = vec![0];
-    let mut node_cache: HashMap<usize, ExprRef> = HashMap::default();
 
     let empty = ExprRef::EMPTY_STRING;
 
     while let Some(state_index) = state_stack.last() {
-        let state = &sa.states[*state_index];
-        if node_cache.contains_key(state_index) {
+        let state_index = *state_index;
+        let state = &sa.states[state_index];
+        if state.regex.is_some() {
             state_stack.pop();
             continue;
         }
 
         if state.next.is_empty() {
-            node_cache.insert(*state_index, empty);
+            sa.states[state_index].regex = Some(empty);
             state_stack.pop();
             continue;
         }
 
-        let unprocessed_children = state
-            .next
-            .values()
-            .filter(|child_index| !node_cache.contains_key(child_index))
-            .collect::<Vec<_>>();
-        if !unprocessed_children.is_empty() {
-            state_stack.extend(unprocessed_children);
+        let prev_stack = state_stack.len();
+        for child_index in state.next.values() {
+            if sa.states[*child_index].regex.is_none() {
+                state_stack.push(*child_index);
+            }
+        }
+
+        if prev_stack != state_stack.len() {
             continue;
         }
 
         let mut options = state
             .next
-            .keys()
-            .map(|c| (c.to_string().into_bytes(), node_cache[&state.next[c]]))
+            .iter()
+            .map(|(k, v)| (k.to_string().into_bytes(), sa.states[*v].regex.unwrap()))
             .collect::<Vec<_>>();
         options.push((Vec::new(), empty));
         let expr = builder.mk_prefix_tree(options)?;
-        node_cache.insert(*state_index, expr);
+        sa.states[state_index].regex = Some(expr);
         state_stack.pop();
     }
-    Ok(node_cache[&0])
+    Ok(sa.states[0].regex.unwrap())
 }
 
 pub fn chunk_into_chars(input: &str) -> Vec<&str> {
