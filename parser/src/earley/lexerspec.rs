@@ -236,7 +236,7 @@ impl LexerSpec {
             })
             .collect();
         RegexVec::new_with_exprset(
-            self.regex_builder.exprset(),
+            self.regex_builder.exprset().clone(),
             rx_list,
             self.special_token_rx,
             limits,

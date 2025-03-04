@@ -62,7 +62,7 @@ impl StopController {
             let mut all_regex = LexemeSet::new(1);
             all_regex.add(LexemeIdx::new(0));
             let mut dfa = RegexVec::new_with_exprset(
-                builder.exprset(),
+                builder.into_exprset(),
                 vec![RxLexeme {
                     rx,
                     lazy: true,

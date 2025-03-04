@@ -155,9 +155,7 @@ impl Compiler {
                     self.mk_regex("regex", rx)
                 }
                 Value::RegexExt(s) => {
-                    let opts: RegexExt = serde_json::from_str(&s)
-                        .map_err(|e| anyhow!("failed to parse %regex declaration: {}", e))?;
-                    compile_lark_regex(&mut self.builder, opts)
+                    compile_lark_regex(&mut self.builder, s.clone())
                 }
                 Value::SpecialToken(s) => {
                     bail!("special tokens (like {:?}) cannot be used in terminals", s);
@@ -299,10 +297,8 @@ impl Compiler {
                     }
                     Value::Json(s) => {
                         let opts = JsonCompileOptions::default();
-                        let v = serde_json::from_str(&s)
-                            .map_err(|e| anyhow!("failed to parse JSON: {}", e))?;
                         let mut grm = opts
-                            .json_to_llg_no_validate(v)
+                            .json_to_llg_no_validate(s.clone())
                             .map_err(|e| anyhow!("failed to compile JSON schema: {}", e))?;
                         assert!(grm.grammars.len() == 1);
                         let mut g = grm.grammars.pop().unwrap();
@@ -586,11 +582,10 @@ impl Grammar {
             }
             Statement::LLGuidance(json_value) => {
                 // first, check if it's valid JSON and all the right types
-                let _v: LLGuidanceOptions = serde_json::from_str(&json_value)
+                let _v: LLGuidanceOptions = serde_json::from_value(json_value.clone())
                     .map_err(|e| anyhow!("failed to parse %llguidance declaration: {}", e))?;
                 // but in fact, we'll work on JSON object
-                let v: serde_json::Value = serde_json::from_str(&json_value).unwrap();
-                json_merge(&mut self.llguidance_options, &v);
+                json_merge(&mut self.llguidance_options, &json_value);
             }
             Statement::OverrideRule(_) => {
                 bail!("override statement not supported yet");
@@ -655,7 +650,7 @@ fn compile_lark_regex(builder: &mut GrammarBuilder, l: RegexExt) -> Result<Regex
     } else if let Some(s) = l.substring_chars {
         chunk_into_chars(&s).iter().map(|s| s.to_string()).collect()
     } else if let Some(s) = l.substring_chunks {
-        s.clone()
+        s
     } else {
         unreachable!()
     };

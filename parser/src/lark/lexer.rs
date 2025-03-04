@@ -1,9 +1,11 @@
 use std::fmt::Display;
 
-use crate::HashMap;
-use anyhow::{bail, Result};
+use crate::{api::RegexExt, HashMap};
+use anyhow::{anyhow, bail, Result};
 use derivre::RegexAst;
+use serde::de;
 use serde_json::{Deserializer, Value};
+use toktrie::bytes::limit_str;
 
 use crate::{
     api::ParserLimits,
@@ -51,13 +53,56 @@ pub enum Token {
     EOF,
 }
 
-/// Represents a lexeme with its token type, value, and position.
 #[derive(Debug, Clone)]
+pub enum LexemeValue {
+    None,
+    String(String),
+    Json(Value),
+    Regex(RegexExt),
+}
+
+impl Default for LexemeValue {
+    fn default() -> Self {
+        LexemeValue::None
+    }
+}
+
+impl LexemeValue {
+    pub fn get_string(&self) -> Result<String> {
+        match self {
+            LexemeValue::String(s) => Ok(s.clone()),
+            _ => bail!("expected string, got JSON"),
+        }
+    }
+}
+
+impl Display for LexemeValue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LexemeValue::String(s) => write!(f, "{:?}", limit_str(s, 100)),
+            _ => write!(f, "{{ ...json... }}"),
+        }
+    }
+}
+
+/// Represents a lexeme with its token type, value, and position.
+#[derive(Debug)]
 pub struct Lexeme {
     pub token: Token,
-    pub value: String,
+    pub value: LexemeValue,
     pub line: usize,
     pub column: usize,
+}
+
+impl Lexeme {
+    pub fn take(&mut self) -> Self {
+        Lexeme {
+            token: self.token,
+            value: std::mem::take(&mut self.value),
+            line: self.line,
+            column: self.column,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -154,7 +199,7 @@ pub fn lex_lark(input: &str) -> Result<Vec<Lexeme>> {
     let mut column_no = 1;
     let mut curr_lexeme = Lexeme {
         token: Token::EOF,
-        value: String::new(),
+        value: LexemeValue::default(),
         line: 1,
         column: 1,
     };
@@ -198,9 +243,23 @@ pub fn lex_lark(input: &str) -> Result<Vec<Lexeme>> {
                     idx + 1
                 };
 
-                if token == Token::KwJson || token == Token::KwLLGuidance || token == Token::KwRegex
+                let raw_value = &input[start_idx..end_idx];
+
+                curr_lexeme.value = if token == Token::KwJson
+                    || token == Token::KwLLGuidance
+                    || token == Token::KwRegex
                 {
-                    let (_, n_bytes) = parse_json_prefix(&input_bytes[end_idx..])?;
+                    let inp_slice = &input_bytes[end_idx..];
+                    let (lexeme_value, n_bytes) = if token == Token::KwRegex {
+                        let (v, n) = parse_json_prefix(inp_slice)
+                            .map_err(|e| anyhow!("failed to parse %regex: {}", e))?;
+                        (LexemeValue::Regex(v), n)
+                    } else {
+                        let (v, n) = parse_json_prefix(inp_slice)
+                            .map_err(|e| anyhow!("failed to parse {:?}: {}", raw_value, e))?;
+                        (LexemeValue::Json(v), n)
+                    };
+
                     start_idx = end_idx;
                     end_idx += n_bytes;
                     for &b in &input_bytes[start_idx..end_idx - 1] {
@@ -214,21 +273,22 @@ pub fn lex_lark(input: &str) -> Result<Vec<Lexeme>> {
                     // make sure we account the line ending properly at the end of the loop
                     idx = end_idx - 1;
                     b = input_bytes[idx];
-                }
+                    lexeme_value
+                } else {
+                    LexemeValue::String(raw_value.to_string())
+                };
 
-                curr_lexeme.value = input[start_idx..end_idx].to_string();
                 start_idx = end_idx;
 
                 // println!("lex: {:?}", curr_lexeme);
 
                 if curr_lexeme.token != Token::SKIP {
-                    lexemes.push(curr_lexeme.clone());
+                    lexemes.push(curr_lexeme.take());
                 }
 
                 state = lexer.start_state(&all_lexemes);
                 state = lexer.transition_start_state(state, transition_byte);
 
-                curr_lexeme.value.clear();
                 curr_lexeme.line = line_no;
                 curr_lexeme.column = column_no;
             }
@@ -246,9 +306,12 @@ pub fn lex_lark(input: &str) -> Result<Vec<Lexeme>> {
     Ok(lexemes)
 }
 
-fn parse_json_prefix(data: &[u8]) -> Result<(Value, usize)> {
+fn parse_json_prefix<'de, T>(data: &[u8]) -> Result<(T, usize)>
+where
+    T: de::Deserialize<'de>,
+{
     let cursor = std::io::Cursor::new(data);
-    let mut stream = Deserializer::from_reader(cursor).into_iter::<Value>();
+    let mut stream = Deserializer::from_reader(cursor).into_iter::<T>();
     if let Some(result) = stream.next() {
         match result {
             Ok(v) => {

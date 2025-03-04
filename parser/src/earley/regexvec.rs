@@ -311,7 +311,7 @@ impl RegexVec {
         if new_state != StateID::MISSING {
             new_state
         } else {
-            self.transition_inner(state, self.alpha.map(b) as u8, idx)
+            self.transition_inner(state, b, idx)
         }
     }
 
@@ -471,28 +471,6 @@ impl RegexVec {
             }
         }
 
-        // This actually seems to make things slower
-        // match next_byte {
-        //     NextByte::ForcedByte(b) => {
-        //         let alen = self.alpha.len();
-        //         let off = state.as_usize() * alen;
-        //         let bs = self.state_table[off + b as usize];
-        //         self.state_table[off..off + alen].fill(StateID::DEAD);
-        //         self.state_table[off + b as usize] = bs;
-        //         // for idx in off..off + alen {
-        //         //     if idx - off != b as usize {
-        //         //         assert!(
-        //         //             self.state_table[idx] == StateID::MISSING
-        //         //                 || self.state_table[idx] == StateID::DEAD
-        //         //         );
-        //         //         self.state_table[idx] = StateID::DEAD;
-        //         //     }
-        //         // }
-        //     }
-        //     _ => {}
-        // }
-
-        let next_byte = next_byte.map_alpha(&self.alpha);
         desc.next_byte = Some(next_byte);
         next_byte
     }
@@ -585,7 +563,7 @@ pub(crate) struct RxLexeme {
 // private implementation
 impl RegexVec {
     pub(crate) fn new_with_exprset(
-        exprset: &ExprSet,
+        exprset: ExprSet,
         mut rx_lexemes: Vec<RxLexeme>,
         special_token_rx: Option<ExprRef>,
         limits: &mut ParserLimits,

@@ -1,9 +1,8 @@
 use super::{
     ast::*,
-    lexer::{lex_lark, Lexeme, Location, Token},
+    lexer::{lex_lark, Lexeme, LexemeValue, Location, Token},
 };
 use anyhow::{anyhow, bail, ensure, Result};
-use toktrie::bytes::limit_str;
 
 /// The parser struct that holds the tokens and current position.
 pub struct Parser {
@@ -56,7 +55,7 @@ impl Parser {
 
     /// Parses a rule definition.
     fn parse_rule(&mut self) -> Result<Rule> {
-        let name = self.expect_token(Token::Rule)?.value;
+        let name = self.expect_token_val(Token::Rule)?;
         let params = if self.has_token(Token::LBrace) {
             Some(self.parse_rule_params()?)
         } else {
@@ -109,7 +108,7 @@ impl Parser {
 
     /// Parses a token definition.
     fn parse_token_def(&mut self) -> Result<TokenDef> {
-        let name = self.expect_token(Token::Token)?.value;
+        let name = self.expect_token_val(Token::Token)?;
         let params = if self.has_token(Token::LBrace) {
             Some(self.parse_token_params()?)
         } else {
@@ -137,12 +136,12 @@ impl Parser {
     fn parse_attributes(&mut self, rule: &mut Rule) -> Result<()> {
         self.expect_token(Token::LBracket)?;
         while !self.has_token(Token::RBracket) {
-            let key = self.expect_token(Token::Rule)?.value;
+            let key = self.expect_token_val(Token::Rule)?;
             match key.as_str() {
                 "capture" => {
                     if self.has_token(Token::Equals) {
                         self.expect_token(Token::Equals)?;
-                        let lexeme = self.expect_token(Token::String)?;
+                        let lexeme = self.expect_token_val(Token::String)?;
                         let string = self.parse_simple_string(&lexeme)?;
                         rule.capture_name = Some(string);
                     } else if rule.capture_name.is_none() {
@@ -166,7 +165,7 @@ impl Parser {
                             rule.stop = Some(value);
                         }
                         "stop_capture" => {
-                            let lexeme = self.expect_token(Token::String)?;
+                            let lexeme = self.expect_token_val(Token::String)?;
                             let string = self.parse_simple_string(&lexeme)?;
                             ensure!(
                                 rule.stop_capture_name.is_none(),
@@ -183,11 +182,11 @@ impl Parser {
                             rule.suffix = Some(value);
                         }
                         "max_tokens" => {
-                            let value = self.expect_token(Token::Number)?.value.parse::<usize>()?;
+                            let value = self.expect_token_val(Token::Number)?.parse::<usize>()?;
                             rule.max_tokens = Some(value);
                         }
                         "temperature" => {
-                            let value = self.expect_token(Token::Number)?.value.parse::<f32>()?;
+                            let value = self.expect_token_val(Token::Number)?.parse::<f32>()?;
                             rule.temperature = Some(value);
                         }
                         _ => bail!("Unknown attribute: {}", key),
@@ -241,8 +240,10 @@ impl Parser {
             }
             Ok(Statement::Declare(names))
         } else if self.has_token(Token::KwLLGuidance) {
-            let value = self.peek_token().unwrap().value.clone();
-            self.advance();
+            let value = match self.take_token_value() {
+                LexemeValue::Json(v) => v.clone(),
+                v => bail!("expected JSON value, got {}", v),
+            };
             Ok(Statement::LLGuidance(value))
         } else {
             bail!("expecting rule, token or statement")
@@ -255,10 +256,10 @@ impl Parser {
             bail!("Expected '{{' in rule parameters")
         }
         let mut params = Vec::new();
-        let name = self.expect_token(Token::Rule)?.value;
+        let name = self.expect_token_val(Token::Rule)?;
         params.push(name);
         while self.match_token(Token::Comma) {
-            let name = self.expect_token(Token::Rule)?.value;
+            let name = self.expect_token_val(Token::Rule)?;
             params.push(name);
         }
         self.expect_token(Token::RBrace)?;
@@ -271,10 +272,10 @@ impl Parser {
             bail!("Expected '{{' in token parameters")
         }
         let mut params = Vec::new();
-        let name = self.expect_token(Token::Token)?.value;
+        let name = self.expect_token_val(Token::Token)?;
         params.push(name);
         while self.match_token(Token::Comma) {
-            let name = self.expect_token(Token::Token)?.value;
+            let name = self.expect_token_val(Token::Token)?;
             params.push(name);
         }
         self.expect_token(Token::RBrace)?;
@@ -286,7 +287,7 @@ impl Parser {
         if !self.match_token(Token::Dot) {
             bail!("Expected '.' in priority")
         }
-        let number = self.expect_token(Token::Number)?.value.parse::<i32>()?;
+        let number = self.expect_token_val(Token::Number)?.parse::<i32>()?;
         Ok(number)
     }
 
@@ -319,7 +320,7 @@ impl Parser {
     fn parse_alias(&mut self) -> Result<Alias> {
         let expansion = self.parse_expansion()?;
         let alias = if self.match_token(Token::Arrow) {
-            Some(self.expect_token(Token::Rule)?.value)
+            Some(self.expect_token_val(Token::Rule)?)
         } else {
             None
         };
@@ -350,11 +351,11 @@ impl Parser {
         let mut op = None;
         let mut range = None;
         if let Some(op_token) = self.match_token_with_value(Token::Op) {
-            op = Some(Op(op_token.value.clone()));
+            op = Some(Op(op_token.clone()));
         } else if self.match_token(Token::Tilde) {
-            let start_num = self.expect_token(Token::Number)?.value.parse::<i32>()?;
+            let start_num = self.expect_token_val(Token::Number)?.parse::<i32>()?;
             let end_num = if self.match_token(Token::DotDot) {
-                Some(self.expect_token(Token::Number)?.value.parse::<i32>()?)
+                Some(self.expect_token_val(Token::Number)?.parse::<i32>()?)
             } else {
                 None
             };
@@ -363,14 +364,14 @@ impl Parser {
             let start_num = if self.has_token(Token::Comma) {
                 0
             } else {
-                self.expect_token(Token::Number)?.value.parse::<i32>()?
+                self.expect_token_val(Token::Number)?.parse::<i32>()?
             };
             let end_num = if self.has_token(Token::Comma) {
                 self.expect_token(Token::Comma)?;
                 if self.has_token(Token::RBrace) {
                     i32::MAX
                 } else {
-                    self.expect_token(Token::Number)?.value.parse::<i32>()?
+                    self.expect_token_val(Token::Number)?.parse::<i32>()?
                 }
             } else {
                 start_num
@@ -399,19 +400,18 @@ impl Parser {
         }
     }
 
-    fn parse_string(&self, string1: &Lexeme) -> Result<(String, String)> {
-        let inner = string1.value.clone();
-        let (inner, flags) = if inner.ends_with('i') {
-            (inner[..inner.len() - 1].to_string(), "i".to_string())
+    fn parse_string(&self, s: &str) -> Result<(String, String)> {
+        let (inner, flags) = if s.ends_with('i') {
+            (&s[..s.len() - 1], "i")
         } else {
-            (inner, "".to_string())
+            (s, "")
         };
         let inner =
             serde_json::from_str(&inner).map_err(|e| anyhow!("error parsing string: {e}"))?;
-        Ok((inner, flags))
+        Ok((inner, flags.to_string()))
     }
 
-    fn parse_simple_string(&self, string1: &Lexeme) -> Result<String> {
+    fn parse_simple_string(&self, string1: &str) -> Result<String> {
         let (inner, flags) = self.parse_string(string1)?;
         ensure!(flags.is_empty(), "flags not allowed in this context");
         Ok(inner)
@@ -421,7 +421,7 @@ impl Parser {
     fn parse_value(&mut self) -> Result<Value> {
         if let Some(string1) = self.match_token_with_value(Token::String) {
             if self.match_token(Token::DotDot) {
-                let string2 = self.expect_token(Token::String)?;
+                let string2 = self.expect_token_val(Token::String)?;
                 Ok(Value::LiteralRange(
                     self.parse_simple_string(&string1)?,
                     self.parse_simple_string(&string2)?,
@@ -431,19 +431,25 @@ impl Parser {
                 Ok(Value::LiteralString(inner, flags))
             }
         } else if let Some(regexp_token) = self.match_token_with_value(Token::Regexp) {
-            let inner = regexp_token.value;
+            let inner = regexp_token;
             let last_slash_idx = inner.rfind('/').unwrap();
             let flags = inner[last_slash_idx + 1..].to_string();
             let regex = inner[1..last_slash_idx].to_string();
             Ok(Value::LiteralRegex(regex, flags))
         } else if let Some(grammar_ref) = self.match_token_with_value(Token::GrammarRef) {
-            Ok(Value::GrammarRef(grammar_ref.value))
+            Ok(Value::GrammarRef(grammar_ref))
         } else if let Some(special_token) = self.match_token_with_value(Token::SpecialToken) {
-            Ok(Value::SpecialToken(special_token.value))
-        } else if let Some(json_val) = self.match_token_with_value(Token::KwJson) {
-            Ok(Value::Json(json_val.value))
-        } else if let Some(json_val) = self.match_token_with_value(Token::KwRegex) {
-            Ok(Value::RegexExt(json_val.value))
+            Ok(Value::SpecialToken(special_token))
+        } else if self.has_token(Token::KwJson) {
+            match self.take_token_value() {
+                LexemeValue::Json(v) => Ok(Value::Json(v)),
+                v => bail!("expected JSON value, got {}", v),
+            }
+        } else if self.has_token(Token::KwRegex) {
+            match self.take_token_value() {
+                LexemeValue::Regex(v) => Ok(Value::RegexExt(v)),
+                v => bail!("expected regex JSON value, got {}", v),
+            }
         } else if let Some(name_token) = self
             .match_token_with_value(Token::Rule)
             .or_else(|| self.match_token_with_value(Token::Token))
@@ -452,7 +458,7 @@ impl Parser {
             if self.has_tokens(&[Token::LBrace, Token::Comma])
                 || self.has_tokens(&[Token::LBrace, Token::Number])
             {
-                Ok(Value::Name(name_token.value))
+                Ok(Value::Name(name_token))
             } else if self.match_token(Token::LBrace) {
                 let mut values = Vec::new();
                 values.push(self.parse_value()?);
@@ -461,11 +467,11 @@ impl Parser {
                 }
                 self.expect_token(Token::RBrace)?;
                 Ok(Value::TemplateUsage {
-                    name: name_token.value,
+                    name: name_token,
                     values,
                 })
             } else {
-                Ok(Value::Name(name_token.value))
+                Ok(Value::Name(name_token))
             }
         } else {
             bail!("Expected value")
@@ -489,9 +495,9 @@ impl Parser {
     /// Parses a name (RULE or TOKEN).
     fn parse_name(&mut self) -> Result<String> {
         if let Some(token) = self.match_token_with_value(Token::Rule) {
-            Ok(token.value.clone())
+            Ok(token)
         } else if let Some(token) = self.match_token_with_value(Token::Token) {
-            Ok(token.value.clone())
+            Ok(token)
         } else {
             bail!("Expected name (RULE or TOKEN)")
         }
@@ -546,10 +552,23 @@ impl Parser {
     }
 
     /// Expects a specific token, or returns an error.
-    fn expect_token(&mut self, expected: Token) -> Result<Lexeme> {
+    fn expect_token(&mut self, expected: Token) -> Result<()> {
         if let Some(token) = self.peek_token() {
             if token.token == expected {
-                let r = token.clone();
+                self.advance();
+                Ok(())
+            } else {
+                bail!("Expected token {:?}, found {:?}", expected, token.token)
+            }
+        } else {
+            bail!("Expected token {:?}, found end of input", expected)
+        }
+    }
+
+    fn expect_token_val(&mut self, expected: Token) -> Result<String> {
+        if let Some(token) = self.peek_token() {
+            if token.token == expected {
+                let r = token.value.get_string().unwrap();
                 self.advance();
                 Ok(r)
             } else {
@@ -561,10 +580,10 @@ impl Parser {
     }
 
     /// Matches a token and returns it if it matches the expected token.
-    fn match_token_with_value(&mut self, expected: Token) -> Option<Lexeme> {
+    fn match_token_with_value(&mut self, expected: Token) -> Option<String> {
         if let Some(token) = self.peek_token() {
             if token.token == expected {
-                let r = token.clone();
+                let r = token.value.get_string().unwrap();
                 self.advance();
                 Some(r)
             } else {
@@ -596,6 +615,12 @@ impl Parser {
         self.tokens.get(self.pos)
     }
 
+    fn take_token_value(&mut self) -> LexemeValue {
+        let r = std::mem::take(&mut self.tokens[self.pos].value);
+        self.advance();
+        r
+    }
+
     /// Advances to the next token.
     fn advance(&mut self) {
         if !self.is_at_end() {
@@ -614,11 +639,11 @@ pub fn parse_lark(input: &str) -> Result<ParsedLark> {
     parser.parse_start().map_err(|e| {
         if let Some(tok) = parser.peek_token() {
             anyhow!(
-                "{}({}): {} (at {:?} ({:?}))",
+                "{}({}): {} (at {} ({:?}))",
                 tok.line,
                 tok.column,
                 e,
-                limit_str(&tok.value, 100),
+                tok.value,
                 tok.token
             )
         } else {

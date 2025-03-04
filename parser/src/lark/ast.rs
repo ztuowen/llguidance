@@ -1,3 +1,5 @@
+use crate::api::RegexExt;
+
 use super::lexer::Location;
 
 /// Represents an item in the grammar (rule, token, or statement).
@@ -59,7 +61,7 @@ pub enum Statement {
         path: String,
         names: Vec<String>,
     },
-    LLGuidance(String),
+    LLGuidance(serde_json::Value),
     #[allow(dead_code)]
     OverrideRule(Box<Rule>),
     #[allow(dead_code)]
@@ -127,8 +129,8 @@ pub enum Value {
     LiteralRegex(String, String),
     GrammarRef(String),
     SpecialToken(String),
-    Json(String),
-    RegexExt(String),
+    Json(serde_json::Value),
+    RegexExt(RegexExt),
     #[allow(dead_code)]
     TemplateUsage {
         name: String,

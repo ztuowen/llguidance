@@ -249,7 +249,7 @@
   "Github_easy---o21393.json": {},
   "Github_easy---o21455.json": {},
   "Github_easy---o21456.json": {
-    "validation_error": "test #0: lexer error: too many expressions constructed"
+    "json_error": "Unable to determine if regex is empty:  (And (Regex \"([^@^\\\\s]+@[^@^\\\\.^\\\\s]+(\\\\.[^@^\\\\.^\\\\s]*)*.gov.uk).*\") (Regex \"(?s:.{5,254})\"))"
   },
   "Github_easy---o21458.json": {},
   "Github_easy---o21459.json": {},

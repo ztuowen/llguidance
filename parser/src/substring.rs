@@ -1,5 +1,5 @@
 use anyhow::Result;
-use derivre::{ExprRef, RegexAst, RegexBuilder};
+use derivre::{ExprRef, RegexBuilder};
 use std::{collections::HashMap, vec};
 
 #[derive(Debug)]
@@ -116,17 +116,10 @@ pub fn substring(builder: &mut RegexBuilder, chunks: Vec<&str>) -> Result<ExprRe
         let mut options = state
             .next
             .keys()
-            .map(|c| {
-                builder
-                    .mk(&RegexAst::Concat(vec![
-                        RegexAst::Literal(c.to_string()),
-                        RegexAst::ExprRef(node_cache[&state.next[c]]),
-                    ]))
-                    .map(RegexAst::ExprRef)
-            })
-            .collect::<Result<Vec<_>>>()?;
-        options.push(RegexAst::ExprRef(empty));
-        let expr = builder.mk(&RegexAst::Or(options))?;
+            .map(|c| (c.to_string().into_bytes(), node_cache[&state.next[c]]))
+            .collect::<Vec<_>>();
+        options.push((Vec::new(), empty));
+        let expr = builder.mk_prefix_tree(options)?;
         node_cache.insert(*state_index, expr);
         state_stack.pop();
     }
