@@ -1,3 +1,9 @@
+// syntax:
+// token separator: ‧
+// token disallowed: ✖
+// backtrack: 1↶ (one token)
+// end of string: ≺EOS≻
+
 use sample_parser::*;
 use serde_json::json;
 
@@ -403,6 +409,19 @@ fn test_ll_backtrack_stop() {
             STOP: /[a-b]/ | /[x-z]/
         "#,
         &["Name‧:", " Em‧ily", "1↶il‧\n‧Name‧:", " Emil‧ie‧a", "1↶"],
+    );
+}
+
+#[test]
+fn test_ll_stop_heal() {
+    // https://github.com/guidance-ai/guidance/issues/1131
+    check_lark_grammar_prompt(
+        r#"
+            start: gen "foo"
+            gen[stop=/"/]: /.*/
+        "#,
+        "Hello, text: ",
+        &["Hello‧,‧ text‧:", " \"", "1↶ foo"],
     );
 }
 

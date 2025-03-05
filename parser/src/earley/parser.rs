@@ -2701,10 +2701,10 @@ impl Parser {
     }
 
     pub(crate) fn additional_backtrack(&mut self, n_bytes: usize) {
-        assert!(self.state.byte_to_token_idx.len() >= n_bytes);
-        self.state
-            .byte_to_token_idx
-            .truncate(self.state.byte_to_token_idx.len() - n_bytes);
+        // we can be sometimes asked to backtrack more than we have
+        // in case the prompt was token-healed; see https://github.com/guidance-ai/guidance/issues/1131
+        let new_len = self.state.byte_to_token_idx.len().saturating_sub(n_bytes);
+        self.state.byte_to_token_idx.truncate(new_len);
     }
 
     pub fn apply_token(&mut self, tok_bytes: &[u8]) -> Result<usize> {

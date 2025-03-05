@@ -513,13 +513,16 @@ impl TokenParser {
                         backtrack_tokens += 1;
                     }
                     assert!(backtrack_tokens > 0);
+                    let additional_backtrack_bytes: usize = (-backtrack_bytes).try_into().unwrap();
+                    let full_backtrack_bytes = backtrack_bytes0 + additional_backtrack_bytes;
 
-                    let byte_ptr = self.llm_bytes.len() - backtrack_bytes0;
+                    let byte_ptr = self.llm_bytes.len() - full_backtrack_bytes;
                     infoln!(
                         self,
-                        "backtrack: {} tokens / {} bytes (deletes: {:?})",
+                        "backtrack: {} tokens / {}+{} bytes (deletes: {:?})",
                         backtrack_tokens,
                         backtrack_bytes0,
+                        additional_backtrack_bytes,
                         String::from_utf8_lossy(&self.llm_bytes[byte_ptr..])
                     );
                     self.llm_bytes.truncate(byte_ptr);
@@ -536,8 +539,7 @@ impl TokenParser {
                     } else {
                         // make sure the parser know we actually don't have
                         // the non-backtracked bytes of backtracked token
-                        self.parser
-                            .additional_backtrack((-backtrack_bytes).try_into().unwrap());
+                        self.parser.additional_backtrack(additional_backtrack_bytes);
                     }
                     self.llm_tokens.truncate(token_ptr);
                     return Ok(backtrack_tokens);
