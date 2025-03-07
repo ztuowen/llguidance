@@ -284,13 +284,12 @@ The input to LLGuidance consists of a list of grammars. This can be accessed via
 or a grammar in the API format. With the introduction of `%json` in Lark syntax
 there is less need now for using multiple grammars, but it is still supported.
 
-Inside of Lark grammar, you can reference other grammars using syntax like `@17`
-refering to grammar at index 17 in the `grammars` list, or `@my_grammar`,
-refering to grammar with `"name": "my_grammar"`.
+Inside of Lark grammar, you can reference other grammars using syntax like `@my_grammar`,
+refering to grammar with `"name": "my_grammar"` (numeric reference like `@17` are no longer supported).
 The top-level grammar is at index 0.
 
 You can specify temperature for subgrammar by referencing it via
-`my_temp_json[temperature=0.7]: @json` syntax.
+`my_temp_json[temperature=0.7]: @my_json` syntax.
 
 Example:
 
