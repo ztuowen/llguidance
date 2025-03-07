@@ -1,5 +1,5 @@
 use super::lexerspec::{LexemeClass, LexemeIdx, LexerSpec};
-use crate::api::{GenGrammarOptions, GrammarId};
+use crate::api::{GenGrammarOptions, GrammarId, NodeProps};
 use crate::HashMap;
 use anyhow::{bail, ensure, Result};
 use std::{fmt::Debug, hash::Hash};
@@ -33,10 +33,8 @@ impl Symbol {
 #[derive(Debug, Clone, PartialEq)]
 pub struct SymbolProps {
     pub max_tokens: usize,
-    pub commit_point: bool,
     pub capture_name: Option<String>,
     pub stop_capture_name: Option<String>,
-    pub hidden: bool,
     pub temperature: f32,
     pub grammar_id: LexemeClass,
     pub is_start: bool,
@@ -45,8 +43,6 @@ pub struct SymbolProps {
 impl Default for SymbolProps {
     fn default() -> Self {
         SymbolProps {
-            commit_point: false,
-            hidden: false,
             max_tokens: usize::MAX,
             capture_name: None,
             stop_capture_name: None,
@@ -60,9 +56,7 @@ impl Default for SymbolProps {
 impl SymbolProps {
     /// Special nodes can't be removed in grammar optimizations
     pub fn is_special(&self) -> bool {
-        self.commit_point
-            || self.hidden
-            || self.max_tokens < usize::MAX
+        self.max_tokens < usize::MAX
             || self.capture_name.is_some()
             || self.stop_capture_name.is_some()
             || self.is_start
@@ -71,8 +65,6 @@ impl SymbolProps {
     // this is used when a rule like 'self -> [self.for_wrapper()]` is added
     pub fn for_wrapper(&self) -> Self {
         SymbolProps {
-            commit_point: false,
-            hidden: self.hidden,
             max_tokens: self.max_tokens,
             capture_name: None,
             stop_capture_name: None,
@@ -86,13 +78,6 @@ impl SymbolProps {
         let props = self;
         let mut outp = String::new();
 
-        if props.commit_point {
-            if props.hidden {
-                outp.push_str(" HIDDEN-COMMIT");
-            } else {
-                outp.push_str(" COMMIT");
-            }
-        }
         if props.capture_name.is_some() {
             outp.push_str(" CAPTURE");
         }
@@ -119,6 +104,7 @@ impl SymbolProps {
     }
 }
 
+#[derive(Debug, Clone)]
 struct Symbol {
     idx: SymIdx,
     name: String,
@@ -128,6 +114,7 @@ struct Symbol {
     props: SymbolProps,
 }
 
+#[derive(Debug, Clone)]
 struct Rule {
     lhs: SymIdx,
     rhs: Vec<SymIdx>,
@@ -139,9 +126,11 @@ impl Rule {
     }
 }
 
+#[derive(Clone)]
 pub struct Grammar {
     name: Option<String>,
     symbols: Vec<Symbol>,
+    symbol_count_cache: HashMap<String, usize>,
     symbol_by_name: HashMap<String, SymIdx>,
 }
 
@@ -151,6 +140,7 @@ impl Grammar {
             name,
             symbols: vec![],
             symbol_by_name: HashMap::default(),
+            symbol_count_cache: HashMap::default(),
         }
     }
 
@@ -159,7 +149,11 @@ impl Grammar {
     }
 
     pub fn is_small(&self) -> bool {
-        self.symbols.len() < 200
+        self.num_symbols() < 200
+    }
+
+    pub fn num_symbols(&self) -> usize {
+        self.symbols.len()
     }
 
     fn sym_data(&self, sym: SymIdx) -> &Symbol {
@@ -177,7 +171,19 @@ impl Grammar {
         Ok(())
     }
 
-    fn check_empty_symbol(&self, sym: SymIdx) -> Result<()> {
+    pub fn link_gen_grammar(&mut self, lhs: SymIdx, grammar: SymIdx) -> Result<()> {
+        let sym = self.sym_data_mut(lhs);
+        ensure!(
+            sym.gen_grammar.is_some(),
+            "no grammar options for {}",
+            sym.name
+        );
+        ensure!(sym.rules.is_empty(), "symbol {} has rules", sym.name);
+        self.add_rule(lhs, vec![grammar])?;
+        Ok(())
+    }
+
+    pub fn check_empty_symbol(&self, sym: SymIdx) -> Result<()> {
         let sym = self.sym_data(sym);
         ensure!(sym.rules.is_empty(), "symbol {} has rules", sym.name);
         ensure!(
@@ -210,6 +216,10 @@ impl Grammar {
         Ok(())
     }
 
+    pub fn set_temperature(&mut self, lhs: SymIdx, temp: f32) {
+        self.sym_data_mut(lhs).props.temperature = temp;
+    }
+
     pub fn make_gen_grammar(&mut self, lhs: SymIdx, data: GenGrammarOptions) -> Result<()> {
         self.check_empty_symbol(lhs)?;
         let sym = self.sym_data_mut(lhs);
@@ -217,11 +227,21 @@ impl Grammar {
         Ok(())
     }
 
+    pub fn apply_node_props(&mut self, lhs: SymIdx, props: NodeProps) {
+        let sym = self.sym_data_mut(lhs);
+        if let Some(max_tokens) = props.max_tokens {
+            sym.props.max_tokens = max_tokens;
+        }
+        if let Some(capture_name) = props.capture_name {
+            sym.props.capture_name = Some(capture_name);
+        }
+    }
+
     pub fn sym_props_mut(&mut self, sym: SymIdx) -> &mut SymbolProps {
         &mut self.sym_data_mut(sym).props
     }
 
-    pub fn sym_props(&mut self, sym: SymIdx) -> &SymbolProps {
+    pub fn sym_props(&self, sym: SymIdx) -> &SymbolProps {
         &self.sym_data(sym).props
     }
 
@@ -229,14 +249,18 @@ impl Grammar {
         &self.symbols[sym.0 as usize].name
     }
 
-    fn rule_to_string(&self, rule: &Rule, dot: Option<usize>) -> String {
+    fn rule_to_string(&self, rule: &Rule, dot: Option<usize>, is_first: bool) -> String {
         let ldata = self.sym_data(rule.lhs());
         let dot_data = rule
             .rhs
             .get(dot.unwrap_or(0))
             .map(|s| &self.sym_data(*s).props);
         rule_to_string(
-            self.sym_name(rule.lhs()),
+            if is_first {
+                self.sym_name(rule.lhs())
+            } else {
+                ""
+            },
             rule.rhs
                 .iter()
                 .map(|s| self.sym_data(*s).short_name())
@@ -421,6 +445,10 @@ impl Grammar {
         let mut temperatures: HashMap<LexemeClass, f32> = HashMap::default();
         for sym in &mut self.symbols {
             if let Some(opts) = &sym.gen_grammar {
+                if sym.rules.len() == 1 {
+                    // ignore already-resolved grammars
+                    continue;
+                }
                 if let Some((idx, cls)) = ctx.get(&opts.grammar).cloned() {
                     rules.push((sym.idx, idx));
                     let temp = opts.temperature.unwrap_or(0.0);
@@ -461,20 +489,17 @@ impl Grammar {
         if props.is_special() {
             assert!(!sym.is_terminal(), "special terminal");
         }
-        assert!(
-            !(!props.commit_point && props.hidden),
-            "hidden on non-commit_point"
-        );
         sym.props = props;
     }
 
     pub fn fresh_symbol_ext(&mut self, name0: &str, symprops: SymbolProps) -> SymIdx {
         let mut name = name0.to_string();
-        let mut idx = 2;
+        let mut idx = self.symbol_count_cache.get(&name).cloned().unwrap_or(2);
         while self.symbol_by_name.contains_key(&name) {
             name = format!("{}#{}", name0, idx);
             idx += 1;
         }
+        self.symbol_count_cache.insert(name0.to_string(), idx);
 
         let idx = SymIdx(self.symbols.len() as u32);
         self.symbols.push(Symbol {
@@ -558,8 +583,8 @@ impl Grammar {
                     )?;
                 }
             } else {
-                for rule in &sym.rules {
-                    writeln!(f, "{}", self.rule_to_string(rule, None))?;
+                for (idx, rule) in sym.rules.iter().enumerate() {
+                    writeln!(f, "{}", self.rule_to_string(rule, None, idx == 0))?;
                 }
             }
         }
@@ -637,21 +662,13 @@ impl CSymbol {
 pub struct SymFlags(u8);
 
 impl SymFlags {
-    const COMMIT_POINT: u8 = 1 << 0;
-    const HIDDEN: u8 = 1 << 2;
-    const CAPTURE: u8 = 1 << 3;
-    const GEN_GRAMMAR: u8 = 1 << 4;
-    const STOP_CAPTURE: u8 = 1 << 5;
-    const HAS_LEXEME: u8 = 1 << 6;
+    const CAPTURE: u8 = 1 << 0;
+    const GEN_GRAMMAR: u8 = 1 << 1;
+    const STOP_CAPTURE: u8 = 1 << 2;
+    const HAS_LEXEME: u8 = 1 << 3;
 
     fn from_csymbol(sym: &CSymbol) -> Self {
         let mut flags = 0;
-        if sym.props.commit_point {
-            flags |= Self::COMMIT_POINT;
-        }
-        if sym.props.hidden {
-            flags |= Self::HIDDEN;
-        }
         if sym.props.capture_name.is_some() {
             flags |= Self::CAPTURE;
         }
@@ -665,17 +682,6 @@ impl SymFlags {
             flags |= Self::HAS_LEXEME;
         }
         SymFlags(flags)
-    }
-
-    #[inline(always)]
-    pub fn commit_point(&self) -> bool {
-        self.0 & Self::COMMIT_POINT != 0
-    }
-
-    #[inline(always)]
-    #[allow(dead_code)]
-    pub fn hidden(&self) -> bool {
-        self.0 & Self::HIDDEN != 0
     }
 
     #[inline(always)]

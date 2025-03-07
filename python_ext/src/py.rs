@@ -2,7 +2,7 @@ use std::fmt::Display;
 use std::ops::DerefMut;
 use std::{borrow::Cow, sync::Arc};
 
-use llguidance::api::{GrammarWithLexer, ParserLimits};
+use llguidance::api::{GrammarInit, ParserLimits};
 use llguidance::earley::SlicedBiasComputer;
 use llguidance::toktrie::{
     self, ApproximateTokEnv, InferenceCapabilities, TokEnv, TokRxInfo, TokTrie, TokenId,
@@ -10,8 +10,7 @@ use llguidance::toktrie::{
 };
 use llguidance::{api::TopLevelGrammar, output::ParserOutput, TokenParser};
 use llguidance::{
-    lark_to_llguidance, token_bytes_from_tokenizer_json, Constraint, GrammarBuilder,
-    JsonCompileOptions, Logger, ParserFactory,
+    token_bytes_from_tokenizer_json, Constraint, JsonCompileOptions, Logger, ParserFactory,
 };
 use pyo3::types::{PyByteArray, PyList};
 use pyo3::{exceptions::PyValueError, prelude::*};
@@ -159,16 +158,16 @@ impl LLInterpreter {
 #[pymethods]
 impl LLInterpreter {
     #[new]
-    #[pyo3(signature = (tokenizer, llguidance_json, enable_backtrack=None, enable_ff_tokens=None, log_level=None))]
+    #[pyo3(signature = (tokenizer, grammar, enable_backtrack=None, enable_ff_tokens=None, log_level=None))]
     fn py_new(
         tokenizer: &LLTokenizer,
-        llguidance_json: &str,
+        grammar: &str,
         enable_backtrack: Option<bool>,
         enable_ff_tokens: Option<bool>,
         log_level: Option<isize>,
     ) -> PyResult<Self> {
         let fact = &tokenizer.factory;
-        let arg: TopLevelGrammar = serde_json::from_str(llguidance_json).map_err(val_error)?;
+        let arg = TopLevelGrammar::from_str(grammar).map_err(val_error)?;
         let log_level = log_level.unwrap_or(1);
         let inference_caps = InferenceCapabilities {
             backtrack: enable_backtrack.unwrap_or(true),
@@ -177,7 +176,7 @@ impl LLInterpreter {
             fork: false,
         };
         let logger = Logger::new(0, std::cmp::max(0, log_level) as u32);
-        let mut inner = TokenParser::from_llguidance_json(
+        let mut inner = TokenParser::from_grammar(
             fact.tok_env().clone(),
             arg,
             logger,
@@ -544,7 +543,7 @@ impl JsonCompiler {
         }
     }
     fn compile(&self, schema: &str) -> PyResult<String> {
-        let schema: Value = serde_json::from_str(schema).map_err(val_error)?;
+        let mut schema: Value = serde_json::from_str(schema).map_err(val_error)?;
         let compile_options = JsonCompileOptions {
             item_separator: self.item_separator.clone(),
             key_separator: self.key_separator.clone(),
@@ -552,8 +551,15 @@ impl JsonCompiler {
             coerce_one_of: self.coerce_one_of,
             retriever: None,
         };
-        let grammar = compile_options.json_to_llg(schema).map_err(val_error)?;
-        serde_json::to_string(&grammar).map_err(val_error)
+        compile_options.apply_to(&mut schema);
+        let grm = TopLevelGrammar::from_json_schema(schema);
+        let res = serde_json::to_string(&grm).map_err(val_error)?;
+        let g_init = GrammarInit::Serialized(grm);
+        // this compiles the grammar and signals errors
+        let _ = g_init
+            .to_internal(None, ParserLimits::default())
+            .map_err(val_error)?;
+        Ok(res)
     }
 }
 
@@ -568,7 +574,7 @@ impl LarkCompiler {
         LarkCompiler {}
     }
     fn compile(&self, lark: &str) -> PyResult<String> {
-        let grammar = lark_to_llguidance(lark).map_err(val_error)?;
+        let grammar = TopLevelGrammar::from_lark(lark.to_string());
         serde_json::to_string(&grammar).map_err(val_error)
     }
 }
@@ -583,13 +589,8 @@ impl RegexCompiler {
     fn py_new() -> Self {
         RegexCompiler {}
     }
-    #[pyo3(signature = (regex, stop_regex=None))]
-    fn compile(&self, regex: &str, stop_regex: Option<&str>) -> PyResult<String> {
-        let mut builder = GrammarBuilder::new();
-        builder.add_grammar(GrammarWithLexer::default());
-        let noderef = builder.gen_rx(regex, stop_regex.unwrap_or(""));
-        builder.set_start_node(noderef);
-        let grammar = builder.finalize().map_err(val_error)?;
+    fn compile(&self, regex: &str) -> PyResult<String> {
+        let grammar = TopLevelGrammar::from_regex(regex);
         serde_json::to_string(&grammar).map_err(val_error)
     }
 }

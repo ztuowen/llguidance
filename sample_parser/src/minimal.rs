@@ -3,7 +3,7 @@ use std::{env, fs::File, hint::black_box, io::Read, sync::Arc, vec};
 use llguidance::{
     api::{ParserLimits, TopLevelGrammar},
     toktrie::{InferenceCapabilities, TokEnv, TokRxInfo, TokTrie, TokenId, TokenizerEnv},
-    Constraint, JsonCompileOptions, TokenParser,
+    Constraint, TokenParser,
 };
 
 struct SingleByteTokenizer {
@@ -52,10 +52,8 @@ fn main() {
     let schema: TopLevelGrammar = if args[1].ends_with(".ll.json") {
         serde_json::from_str(&schema_file).expect("Invalid JSON in schema")
     } else if args[1].ends_with(".schema.json") {
-        let opts = JsonCompileOptions::default();
         let val = serde_json::from_str(&schema_file).expect("Invalid JSON in schema");
-        opts.json_to_llg(val)
-            .expect("Failed to convert JSON to LLG")
+        TopLevelGrammar::from_json_schema(val)
     } else {
         panic!("Unknown schema file extension")
     };
@@ -73,7 +71,7 @@ fn main() {
     // typically set to 2, to send info-level output to the user
     let buffer_log_level = 2;
 
-    let parser = TokenParser::from_llguidance_json(
+    let parser = TokenParser::from_grammar(
         tok_env.clone(),
         schema,
         llguidance::Logger::new(buffer_log_level, stderr_log_level),
