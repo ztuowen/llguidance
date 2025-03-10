@@ -17,8 +17,6 @@ use crate::{
 pub struct TopLevelGrammar {
     pub grammars: Vec<GrammarWithLexer>,
     pub max_tokens: Option<usize>,
-    #[serde(default)]
-    pub test_trace: bool,
 }
 
 #[derive(Clone)]
@@ -290,7 +288,6 @@ impl TopLevelGrammar {
         TopLevelGrammar {
             grammars: vec![grammar],
             max_tokens: None,
-            test_trace: false,
         }
     }
 }

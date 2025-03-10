@@ -21,7 +21,6 @@ pub struct TokenParser {
     pub bias_computer: Arc<dyn BiasComputer>,
     last_step_stats: ParserStats,
     max_step_stats: ParserStats,
-    test_trace: bool,
     eos_token: TokenId,
 
     is_accepting_cache: Option<bool>,
@@ -94,7 +93,6 @@ impl TokenParser {
         );
 
         let compute_mask_start_time = Instant::now();
-        let test_trace = false; // TODO remove this
         let mut max_tokens = usize::MAX;
         match &grammar_init {
             GrammarInit::Serialized(input) => {
@@ -116,7 +114,6 @@ impl TokenParser {
         Ok(TokenParser {
             bias_computer: Arc::new(DefaultBiasComputer::new(token_env.clone())),
             logger,
-            test_trace,
             token_env,
             inference_caps,
             limits,
@@ -285,19 +282,7 @@ impl TokenParser {
         }
 
         infoln!(self, "res_prompt: {}", trie.tokens_dbg(&res_prompt));
-        if self.test_trace {
-            self.test_trace_json(&json!({
-                "prompt": trie.test_trace_tokens(&prompt),
-                "res_prompt": trie.test_trace_tokens(&res_prompt),
-            }));
-        }
         res_prompt
-    }
-
-    fn test_trace_json(&mut self, j: &serde_json::Value) {
-        if self.test_trace {
-            infoln!(self, "TEST: {}", serde_json::to_string(j).unwrap());
-        }
     }
 
     fn stop(&mut self, warn: &str, reason: StopReason) -> anyhow::Error {
