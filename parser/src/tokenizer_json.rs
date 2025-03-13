@@ -94,7 +94,7 @@ pub fn token_bytes_from_tokenizer_json(tokenizer_json: &Value) -> Result<Vec<Vec
             .map_err(|e| anyhow!("error parsing vocab: {}", e))?;
 
     for (tok_name, &tok_id) in vocab.iter() {
-        if tok_id < token_bytes.len() && token_bytes[tok_id].len() > 0 {
+        if tok_id < token_bytes.len() && !token_bytes[tok_id].is_empty() {
             continue; // skip specials already added
         }
 
@@ -114,8 +114,7 @@ pub fn token_bytes_from_tokenizer_json(tokenizer_json: &Value) -> Result<Vec<Vec
                 .chars()
                 .map(|c| {
                     char_map
-                        .get(&c)
-                        .map(|c| *c)
+                        .get(&c).copied()
                         .ok_or_else(|| anyhow!("missing char: {}", c))
                 })
                 .collect();

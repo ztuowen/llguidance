@@ -266,7 +266,7 @@ impl TopLevelGrammar {
             bail!("Empty grammar");
         }
         if first_non_whitespace == Some('{') {
-            Ok(serde_json::from_str(&s)?)
+            Ok(serde_json::from_str(s)?)
         } else {
             Ok(TopLevelGrammar::from_lark(s.to_string()))
         }

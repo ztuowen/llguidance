@@ -235,7 +235,7 @@ impl Compiler {
             Ok(self.builder.select(&cfg_nodes))
         } else if let Some(e) = errors.pop() {
             Err(anyhow!(UnsatisfiableSchemaError {
-                message: format!("All options in anyOf are unsatisfiable",),
+                message: "All options in anyOf are unsatisfiable".to_string(),
             })
             .context(e))
         } else {
@@ -468,7 +468,7 @@ impl Compiler {
     ) -> NodeRef {
         // Cache to reduce number of nodes from O(n^2) to O(n)
         if let Some(node) = cache.get(&(items, prefixed)) {
-            return node.clone();
+            return *node;
         }
         if items.is_empty() {
             return self.builder.string("");
@@ -506,7 +506,7 @@ impl Compiler {
                 self.builder.select(&opts)
             }
         };
-        cache.insert((items, prefixed), node.clone());
+        cache.insert((items, prefixed), node);
         node
     }
 
@@ -715,7 +715,7 @@ impl Compiler {
                 // Item is required; add context and propagate UnsatisfiableSchemaError
                 Some(_) => {
                     return Err(e.context(UnsatisfiableSchemaError {
-                        message: format!("required item is unsatisfiable"),
+                        message: "required item is unsatisfiable".to_string(),
                     }));
                 }
             },
@@ -754,7 +754,7 @@ impl Compiler {
                     },
                 }
             } else if let Some(compiled) = &additional_item_grm {
-                compiled.clone()
+                *compiled
             } else {
                 break;
             };
@@ -766,7 +766,7 @@ impl Compiler {
             }
         }
 
-        if max_items.is_none() && !additional_item_grm.is_none() {
+        if max_items.is_none() && additional_item_grm.is_some() {
             // Add an infinite tail of items
             optional_items.push(self.sequence(additional_item_grm.unwrap()));
         }

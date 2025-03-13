@@ -218,12 +218,10 @@ fn check_grammar(
                     assert!(bt == 0 || res.ff_tokens.is_empty());
                     bt = 1;
                     // go to forced byte checking
+                } else if toks.is_empty() {
+                    panic!("Expected {}; got nothing", tok);
                 } else {
-                    if toks.is_empty() {
-                        panic!("Expected {}; got nothing", tok);
-                    } else {
-                        panic!("Expected token {} got {}", tok, toks[0]);
-                    }
+                    panic!("Expected token {} got {}", tok, toks[0]);
                 }
             } else if toks.len() > 1 {
                 // we got fast-forwarded to the next entry,
@@ -299,7 +297,7 @@ fn tokenize_trace(tok_env: &TokEnv, s: &str) -> Vec<(bool, TokenId)> {
     }
 
     // Split by both ‧ and × to catch all tokens
-    let words = s.split(|c| c == '‧' || c == '✖').collect::<Vec<&str>>();
+    let words = s.split(['‧', '✖']).collect::<Vec<&str>>();
     let mut char_pos = 0;
 
     for word in words {

@@ -33,11 +33,9 @@ fn par_compute_mask_inner(constraints: Vec<LlgConstraintStep>) {
                     std::ptr::write_bytes(step.mask_dest.add(num_copied), 0, left);
                 }
             }
-            if add_eos {
-                if eos / 32 < mask_elts {
-                    unsafe {
-                        *step.mask_dest.add(eos / 32) |= 1 << (eos % 32);
-                    }
+            if add_eos && eos / 32 < mask_elts {
+                unsafe {
+                    *step.mask_dest.add(eos / 32) |= 1 << (eos % 32);
                 }
             }
         }

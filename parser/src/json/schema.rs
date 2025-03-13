@@ -526,7 +526,7 @@ fn compile_contents_map(ctx: &Context, mut schemadict: HashMap<&str, &Value>) ->
         .keys()
         .filter(|k| !ctx.is_valid_keyword(k))
         .collect::<Vec<_>>();
-    if unimplemented_keys.len() > 0 {
+    if !unimplemented_keys.is_empty() {
         // ensure consistent order for tests
         unimplemented_keys.sort();
         bail!("Unimplemented keys: {:?}", unimplemented_keys);
@@ -548,8 +548,8 @@ fn compile_contents_map(ctx: &Context, mut schemadict: HashMap<&str, &Value>) ->
             return Ok(siblings);
         }
         let options = instances
-            .into_iter()
-            .map(|instance| compile_const(instance))
+            .iter()
+            .map(compile_const)
             .map(|res| res.and_then(|schema| schema.intersect(siblings.clone(), ctx)))
             .collect::<Result<Vec<_>>>()?;
         return Ok(Schema::AnyOf { options });
@@ -566,7 +566,7 @@ fn compile_contents_map(ctx: &Context, mut schemadict: HashMap<&str, &Value>) ->
         }
         let options = all_of
             .iter()
-            .map(|value| compile_resource(&ctx, ctx.as_resource_ref(value)))
+            .map(|value| compile_resource(ctx, ctx.as_resource_ref(value)))
             .collect::<Result<Vec<_>>>()?;
         let merged = intersect(
             ctx,
@@ -588,8 +588,8 @@ fn compile_contents_map(ctx: &Context, mut schemadict: HashMap<&str, &Value>) ->
             return Ok(siblings);
         }
         let options = any_of
-            .into_iter()
-            .map(|value| compile_resource(&ctx, ctx.as_resource_ref(value)))
+            .iter()
+            .map(|value| compile_resource(ctx, ctx.as_resource_ref(value)))
             .map(|res| res.and_then(|schema| siblings.clone().intersect(schema, ctx)))
             .collect::<Result<Vec<_>>>()?;
         return Ok(Schema::AnyOf { options });
@@ -606,8 +606,8 @@ fn compile_contents_map(ctx: &Context, mut schemadict: HashMap<&str, &Value>) ->
             return Ok(siblings);
         }
         let options = one_of
-            .into_iter()
-            .map(|value| compile_resource(&ctx, ctx.as_resource_ref(value)))
+            .iter()
+            .map(|value| compile_resource(ctx, ctx.as_resource_ref(value)))
             .map(|res| res.and_then(|schema| siblings.clone().intersect(schema, ctx)))
             .collect::<Result<Vec<_>>>()?;
         return Ok(Schema::OneOf { options }.normalize());
@@ -616,7 +616,7 @@ fn compile_contents_map(ctx: &Context, mut schemadict: HashMap<&str, &Value>) ->
     if let Some(reference) = schemadict.remove("$ref") {
         let reference = reference
             .as_str()
-            .ok_or_else(|| anyhow!("$ref must be a string, got {}", limited_str(&reference)))?
+            .ok_or_else(|| anyhow!("$ref must be a string, got {}", limited_str(reference)))?
             .to_string();
 
         let uri: String = ctx.normalize_ref(&reference)?;
@@ -631,7 +631,7 @@ fn compile_contents_map(ctx: &Context, mut schemadict: HashMap<&str, &Value>) ->
 
     let types = match schemadict.remove("type") {
         Some(Value::String(tp)) => {
-            return compile_type(ctx, &tp, &schemadict);
+            return compile_type(ctx, tp, &schemadict);
         }
         Some(Value::Array(types)) => types
             .iter()
@@ -647,7 +647,7 @@ fn compile_contents_map(ctx: &Context, mut schemadict: HashMap<&str, &Value>) ->
     // Shouldn't need siblings here since we've already handled allOf, anyOf, oneOf, and $ref
     let options = types
         .iter()
-        .map(|tp| compile_type(ctx, &tp, &schemadict))
+        .map(|tp| compile_type(ctx, tp, &schemadict))
         .collect::<Result<Vec<Schema>>>()?;
     Ok(Schema::AnyOf { options })
 }
@@ -657,7 +657,7 @@ fn define_ref(ctx: &Context, ref_uri: &str) -> Result<()> {
         ctx.mark_seen(ref_uri);
         let resource = ctx.lookup_resource(ref_uri)?;
         let resolved_schema = compile_resource(ctx, resource)?;
-        ctx.insert_ref(&ref_uri, resolved_schema);
+        ctx.insert_ref(ref_uri, resolved_schema);
     }
     Ok(())
 }
@@ -711,7 +711,7 @@ fn compile_const(instance: &Value) -> Result<Schema> {
         Value::Array(items) => {
             let prefix_items = items
                 .iter()
-                .map(|item| compile_const(item))
+                .map(compile_const)
                 .collect::<Result<Vec<Schema>>>()?;
             Ok(Schema::Array {
                 min_items: prefix_items.len() as u64,
@@ -738,7 +738,7 @@ fn compile_const(instance: &Value) -> Result<Schema> {
 fn compile_type(ctx: &Context, tp: &str, schema: &HashMap<&str, &Value>) -> Result<Schema> {
     ctx.increment()?;
 
-    let get = |key: &str| schema.get(key).map(|v| *v);
+    let get = |key: &str| schema.get(key).copied();
 
     match tp {
         "null" => Ok(Schema::Null),
@@ -851,9 +851,9 @@ fn pattern_to_regex(pattern: &str) -> RegexAst {
         result.push_str(".*");
     }
     // without parens, for a|b we would get .*a|b.* which is (.*a)|(b.*)
-    result.push_str("(");
+    result.push('(');
     result.push_str(trimmed);
-    result.push_str(")");
+    result.push(')');
     if !right_anchored {
         result.push_str(".*");
     }
@@ -897,7 +897,7 @@ fn compile_string(
                 .ok_or_else(|| anyhow!("Expected string for 'format', got {}", limited_str(val)))?
                 .to_string();
             let fmt = lookup_format(&key).ok_or_else(|| anyhow!("Unknown format: {}", key))?;
-            pattern_to_regex(&fmt)
+            pattern_to_regex(fmt)
         }),
     };
     let regex = match (pattern_rx, format_rx) {
@@ -909,7 +909,7 @@ fn compile_string(
     Ok(Schema::String {
         min_length,
         max_length,
-        regex: regex,
+        regex,
     })
 }
 
@@ -957,12 +957,12 @@ fn compile_array(
             .as_array()
             .ok_or_else(|| anyhow!("Expected array for 'prefixItems', got {}", limited_str(val)))?
             .iter()
-            .map(|item| compile_resource(&ctx, ctx.as_resource_ref(item)))
+            .map(|item| compile_resource(ctx, ctx.as_resource_ref(item)))
             .collect::<Result<Vec<Schema>>>()?,
     };
     let items = match items {
         None => None,
-        Some(val) => Some(Box::new(compile_resource(&ctx, ctx.as_resource_ref(val))?)),
+        Some(val) => Some(Box::new(compile_resource(ctx, ctx.as_resource_ref(val))?)),
     };
     Ok(Schema::Array {
         min_items,
@@ -984,12 +984,12 @@ fn compile_object(
             .as_object()
             .ok_or_else(|| anyhow!("Expected object for 'properties', got {}", limited_str(val)))?
             .iter()
-            .map(|(k, v)| compile_resource(&ctx, ctx.as_resource_ref(v)).map(|v| (k.clone(), v)))
+            .map(|(k, v)| compile_resource(ctx, ctx.as_resource_ref(v)).map(|v| (k.clone(), v)))
             .collect::<Result<IndexMap<String, Schema>>>()?,
     };
     let additional_properties = match additional_properties {
         None => None,
-        Some(val) => Some(Box::new(compile_resource(&ctx, ctx.as_resource_ref(val))?)),
+        Some(val) => Some(Box::new(compile_resource(ctx, ctx.as_resource_ref(val))?)),
     };
     let required = match required {
         None => IndexSet::new(),

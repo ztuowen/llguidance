@@ -67,7 +67,7 @@ pub fn token_ranges_to_string(token_ranges: &Vec<RangeInclusive<TokenId>>) -> St
     let mut s = "<[".to_string();
     for range in token_ranges {
         if s.len() > 2 {
-            s.push_str(",");
+            s.push(',');
         }
         if range.start() == range.end() {
             write!(s, "{:?}", range.start()).unwrap();
@@ -102,7 +102,7 @@ impl LexemeSpec {
         if self.contextual {
             f.push_str(" contextual");
         }
-        if self.token_ranges.len() > 0 {
+        if !self.token_ranges.is_empty() {
             write!(f, " tokens={}", token_ranges_to_string(&self.token_ranges)).unwrap();
         }
         // write!(f, " compiled={:?}", self.compiled_rx).unwrap();
@@ -207,7 +207,7 @@ impl LexerSpec {
         let mut res = Vec::new();
         for idx in possible.iter() {
             let spec = &self.lexemes[idx.as_usize()];
-            if spec.token_ranges.len() > 0 {
+            if !spec.token_ranges.is_empty() {
                 res.push(spec);
             }
         }
@@ -244,7 +244,7 @@ impl LexerSpec {
     }
 
     fn add_lexeme_spec(&mut self, mut spec: LexemeSpec) -> Result<LexemeIdx> {
-        let compiled = if spec.token_ranges.len() > 0 {
+        let compiled = if !spec.token_ranges.is_empty() {
             if let Some(rx) = self.special_token_rx {
                 rx
             } else {
@@ -300,7 +300,7 @@ impl LexerSpec {
 
     fn empty_spec(&self) -> LexemeSpec {
         assert!(
-            self.skip_by_class.len() > 0,
+            !self.skip_by_class.is_empty(),
             "new_lexeme_class() not called"
         );
         LexemeSpec {

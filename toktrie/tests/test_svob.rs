@@ -262,9 +262,9 @@ fn test_resize() {
 fn test_get_and_is_allowed() {
     let bits = [false, true, true, false];
     let v = SimpleVob::from_slice(&bits);
-    assert_eq!(v.get(1), true);
-    assert_eq!(v.is_allowed(2), true);
-    assert_eq!(v.is_allowed(0), false);
+    assert!(v.get(1));
+    assert!(v.is_allowed(2));
+    assert!(!v.is_allowed(0));
 }
 
 #[test]

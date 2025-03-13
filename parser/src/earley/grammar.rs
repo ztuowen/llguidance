@@ -548,26 +548,20 @@ impl Grammar {
         use std::fmt::Write;
         writeln!(f, "Grammar:")?;
         for sym in &self.symbols {
-            match sym.gen_grammar {
-                Some(ref opts) => {
-                    writeln!(f, "{:15} ==> {:?}", sym.name, opts.grammar)?;
-                }
-                _ => {}
+            if let Some(ref opts) = sym.gen_grammar {
+                writeln!(f, "{:15} ==> {:?}", sym.name, opts.grammar)?;
             }
             if false {
-                match sym.lexeme {
-                    Some(lx) => {
-                        write!(f, "{:15} ==>", sym.name)?;
-                        if sym.props.temperature != 0.0 {
-                            write!(f, " temp={:.2}", sym.props.temperature)?;
-                        }
-                        if let Some(lexer_spec) = lexer_spec {
-                            writeln!(f, " {}", lexer_spec.lexeme_def_to_string(lx))?;
-                        } else {
-                            writeln!(f, " [{:?}]", lx.as_usize())?;
-                        }
+                if let Some(lx) = sym.lexeme {
+                    write!(f, "{:15} ==>", sym.name)?;
+                    if sym.props.temperature != 0.0 {
+                        write!(f, " temp={:.2}", sym.props.temperature)?;
                     }
-                    _ => {}
+                    if let Some(lexer_spec) = lexer_spec {
+                        writeln!(f, " {}", lexer_spec.lexeme_def_to_string(lx))?;
+                    } else {
+                        writeln!(f, " [{:?}]", lx.as_usize())?;
+                    }
                 }
             }
         }
@@ -921,7 +915,7 @@ impl CGrammar {
         let symdata = self.sym_data(sym);
         let lhs = self.sym_name(sym);
         let (rhs, dot) = self.rule_rhs(rule);
-        let dot_prop = if rhs.len() > 0 {
+        let dot_prop = if !rhs.is_empty() {
             Some(&self.sym_data_dot(rule).props)
         } else {
             None

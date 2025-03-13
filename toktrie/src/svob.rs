@@ -41,9 +41,9 @@ impl Default for SimpleVob {
     }
 }
 
-impl Into<Vec<u32>> for SimpleVob {
-    fn into(self) -> Vec<u32> {
-        self.data
+impl From<SimpleVob> for Vec<u32> {
+    fn from(val: SimpleVob) -> Self {
+        val.data
     }
 }
 
@@ -406,7 +406,7 @@ pub struct SimpleVobIter<'a> {
     idx: usize,
 }
 
-impl<'a> Iterator for SimpleVobIter<'a> {
+impl Iterator for SimpleVobIter<'_> {
     type Item = u32;
 
     #[inline(always)]
@@ -424,7 +424,7 @@ impl<'a> Iterator for SimpleVobIter<'a> {
             bitoff = 0;
             dataoff += 1;
         }
-        return None;
+        None
     }
 }
 

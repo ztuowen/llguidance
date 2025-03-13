@@ -22,10 +22,7 @@ fn consume(parser: &mut TokenParser, tok: u32) {
 }
 
 fn lark_ok(lark: &str) {
-    match make_parser(lark, false) {
-        Err(e) => panic!("unexpected error: {}, grm:\n{}", e, lark),
-        Ok(_) => {}
-    }
+    if let Err(e) = make_parser(lark, false) { panic!("unexpected error: {}, grm:\n{}", e, lark) }
 }
 
 fn lark_err_test(lark: &str, err: &str) {
@@ -87,7 +84,7 @@ fn lark_str_test(lark: &str, should_accept: bool, input: &str, quiet: bool) {
         }
     }
 
-    if p.is_accepting() != !final_reject {
+    if p.is_accepting() == final_reject {
         if p.is_accepting() {
             panic!("unexpected accept{info}");
         } else {
@@ -536,7 +533,7 @@ fn gen_words(seed: u32, num_words: usize) -> String {
         let len = rnd.from_range(1..15);
         for _ in 0..len {
             let idx = rnd.from_range(0..letters.len());
-            word.push(letters.as_bytes()[idx as usize] as char);
+            word.push(letters.as_bytes()[idx] as char);
         }
         words.push(word);
     }
@@ -573,7 +570,7 @@ fn test_large_select() {
         lark_str_test_many_quiet(
             &grm,
             //&options.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
-            &[&options[2].as_str(), &options[7].as_str()],
+            &[options[2].as_str(), options[7].as_str()],
             &["something that is unlikely to be in the options"],
         );
     }
@@ -659,7 +656,7 @@ FILE_0: %regex {
     let repl = repl_block(filename, "foo\nbar", "qux");
 
     lark_str_test_many(
-        &grm,
+        grm,
         &[
             &repl,
             &format!("{}\n", repl),

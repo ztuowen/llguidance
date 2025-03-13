@@ -258,7 +258,7 @@ impl Compiler {
     fn get_grammar_id(g: &str) -> Result<GrammarId> {
         assert!(g.starts_with("@"));
         // see if g[1..] is an integer
-        if let Ok(_) = g[1..].parse::<usize>() {
+        if g[1..].parse::<usize>().is_ok() {
             bail!("numeric grammar references no longer supported");
         } else {
             Ok(GrammarId::Name(g[1..].to_string()))
@@ -307,12 +307,12 @@ impl Compiler {
                             ensure!(!ranges.is_empty(), "empty token range");
                             return self.builder.token_ranges(ranges);
                         }
-                        return self.builder.special_token(&s);
+                        return self.builder.special_token(s);
                     }
                     Value::GrammarRef(g) => {
                         return Ok(self.builder.gen_grammar(
                             GenGrammarOptions {
-                                grammar: Compiler::get_grammar_id(&g)?,
+                                grammar: Compiler::get_grammar_id(g)?,
                                 temperature: None,
                             },
                             NodeProps::default(),
@@ -669,7 +669,7 @@ fn compile_lark_regex(builder: &mut GrammarBuilder, l: RegexExt) -> Result<Regex
     if l.substring_chars.is_some() {
         fields_set.push("substring_chars");
     }
-    if fields_set.len() == 0 {
+    if fields_set.is_empty() {
         bail!("no fields set on %regex");
     }
     if fields_set.len() > 1 {

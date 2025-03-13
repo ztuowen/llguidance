@@ -307,10 +307,8 @@ impl Parser {
             return true;
         }
         let p0 = self.pos;
-        if self.match_token(Token::Newline) {
-            if self.match_token(Token::VBar) {
-                return true;
-            }
+        if self.match_token(Token::Newline) && self.match_token(Token::VBar) {
+            return true;
         }
         self.pos = p0;
         false
@@ -407,7 +405,7 @@ impl Parser {
             (s, "")
         };
         let inner =
-            serde_json::from_str(&inner).map_err(|e| anyhow!("error parsing string: {e}"))?;
+            serde_json::from_str(inner).map_err(|e| anyhow!("error parsing string: {e}"))?;
         Ok((inner, flags.to_string()))
     }
 
@@ -544,11 +542,7 @@ impl Parser {
             return false;
         }
         let pref = &self.tokens[self.pos..self.pos + toks.len()];
-        if pref.iter().zip(toks.iter()).all(|(a, b)| a.token == *b) {
-            true
-        } else {
-            false
-        }
+        pref.iter().zip(toks.iter()).all(|(a, b)| a.token == *b)
     }
 
     /// Expects a specific token, or returns an error.

@@ -98,7 +98,7 @@ impl GrammarInit {
             GrammarInit::Internal(g, l) => Ok((g, l)),
 
             GrammarInit::Serialized(input) => {
-                ensure!(input.grammars.len() > 0, "empty grammars array");
+                ensure!(!input.grammars.is_empty(), "empty grammars array");
 
                 let builder = GrammarBuilder::new(tok_env, limits.clone());
 

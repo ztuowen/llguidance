@@ -251,7 +251,7 @@ impl Constraint {
 
             // save any logs
             self.save_progress_and_result(StepResult::splice(bt as u32, tokens));
-            return self.res_commit_result();
+            self.res_commit_result()
         } else {
             bail!("internal error: invalid compute_mask() result");
         }

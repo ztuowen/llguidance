@@ -54,18 +54,15 @@ pub enum Token {
 }
 
 #[derive(Debug, Clone)]
+#[derive(Default)]
 pub enum LexemeValue {
+    #[default]
     None,
     String(String),
     Json(Value),
     Regex(RegexExt),
 }
 
-impl Default for LexemeValue {
-    fn default() -> Self {
-        LexemeValue::None
-    }
-}
 
 impl LexemeValue {
     pub fn get_string(&self) -> Result<String> {
@@ -175,7 +172,7 @@ pub fn lex_lark(input: &str) -> Result<Vec<Lexeme>> {
     lexeme_idx_to_token.insert(spec.skip_id(cls), Token::SKIP);
     for (token, literal) in Token::LITERAL_TOKENS {
         let l = spec
-            .add_simple_literal(format!("{:?}", token), *literal, false)
+            .add_simple_literal(format!("{:?}", token), literal, false)
             .unwrap();
         lexeme_idx_to_token.insert(l, *token);
     }

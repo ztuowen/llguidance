@@ -778,10 +778,10 @@ impl Debug for RegexVec {
     }
 }
 
-fn iter_state<'a>(
-    rx_sets: &'a VecHashCons,
+fn iter_state(
+    rx_sets: &VecHashCons,
     state: StateID,
-) -> impl Iterator<Item = (LexemeIdx, ExprRef)> + 'a {
+) -> impl Iterator<Item = (LexemeIdx, ExprRef)> + '_ {
     let lst = rx_sets.get(state.as_u32());
     (0..lst.len()).step_by(2).map(move |idx| {
         (

@@ -949,7 +949,7 @@ impl ParserState {
         self.lexer_stack.truncate(new_len + 1);
 
         self.row_infos.truncate(self.num_rows());
-        self.token_idx = self.byte_to_token_idx.last().unwrap_or(&0).clone() as usize;
+        self.token_idx = *self.byte_to_token_idx.last().unwrap_or(&0) as usize;
         self.last_force_bytes_len = usize::MAX;
         self.lexer_stack_top_eos = false;
         self.rows_valid_end = self.num_rows();
@@ -1244,7 +1244,7 @@ impl ParserState {
             self.print_row(self.num_rows() - 1);
         }
 
-        return Ok(0);
+        Ok(0)
     }
 
     fn token_range_lexemes(&self) -> Vec<&LexemeSpec> {
@@ -1422,7 +1422,7 @@ impl ParserState {
 
     fn trie_finished_inner(&mut self) {
         // debug!("trie_finished: rows={} lexer={}", self.num_rows(), self.lexer_stack.len());
-        assert!(self.scratch.definitive == false);
+        assert!(!self.scratch.definitive);
         assert!(self.row_infos.len() <= self.num_rows());
 
         // cleanup excessive grammar items (perf)
@@ -1528,10 +1528,7 @@ impl ParserState {
         //let t0 = Instant::now();
         let lex_state = self.lexer_state().lexer_state;
         let quick_res = self.lexer_mut().next_byte(lex_state);
-        match quick_res {
-            NextByte::ForcedByte(b) => return Some(b),
-            _ => {}
-        }
+        if let NextByte::ForcedByte(b) = quick_res { return Some(b) }
 
         let slow_res = self.run_speculative("forced_byte", |state| {
             let mut r = ParserRecognizer { state };
@@ -1552,7 +1549,7 @@ impl ParserState {
 
             // otherwise, start iterating from any hint from the lexer,
             // otherwise from ' '
-            let b0 = quick_res.some_bytes().get(0).cloned().unwrap_or(b' ');
+            let b0 = quick_res.some_bytes().first().cloned().unwrap_or(b' ');
             let mut b = b0;
             let mut byte_sym = None;
             loop {
@@ -1630,7 +1627,7 @@ impl ParserState {
 
         self.check_lexer_bytes_invariant();
 
-        return false;
+        false
     }
 
     // this just copies current row
@@ -1698,7 +1695,7 @@ impl ParserState {
         if self.scratch.definitive {
             debug!(
                 "  scan: {} at row={} token={}",
-                self.lexer().dbg_lexeme(&lexeme),
+                self.lexer().dbg_lexeme(lexeme),
                 row_idx,
                 self.token_idx,
             );
@@ -1727,7 +1724,7 @@ impl ParserState {
         debug!(
             "      capture: {} {:?}",
             var_name,
-            String::from_utf8_lossy(&bytes)
+            String::from_utf8_lossy(bytes)
         );
 
         let bytes = self.tok_env.tok_trie().decode_raw_to_decode(bytes);
@@ -1933,7 +1930,7 @@ impl ParserState {
             let idx = self.num_rows();
 
             let row = self.scratch.work_row(lex_start);
-            if self.rows.len() == 0 || self.rows.len() == idx {
+            if self.rows.is_empty() || self.rows.len() == idx {
                 // If the physical 'rows' Vec is full, we push a new row
                 // otherwise ...
                 self.rows.push(row);
@@ -2043,7 +2040,7 @@ impl ParserState {
         );
         let mut max_token_ptr = None;
 
-        let mut grm_stack_top = if self.rows.len() > 0 {
+        let mut grm_stack_top = if !self.rows.is_empty() {
             self.rows[self.num_rows() - 1].grammar_stack_ptr
         } else {
             GrammarStackPtr::new(0)
@@ -2216,13 +2213,13 @@ impl ParserState {
             trace!(
                 "  hidden_bytes: {} {:?}",
                 self.allowed_lexemes_dbg(added_row_start_state),
-                String::from_utf8_lossy(&hidden_bytes)
+                String::from_utf8_lossy(hidden_bytes)
             );
         }
 
         if self.has_forced_bytes(
             self.lexer().possible_lexemes(added_row_start_state),
-            &hidden_bytes,
+            hidden_bytes,
         ) {
             if trace_here {
                 trace!("  hidden forced");
@@ -2441,7 +2438,7 @@ pub struct ParserRecognizer<'a> {
     state: &'a mut ParserState,
 }
 
-impl<'a> ParserRecognizer<'a> {
+impl ParserRecognizer<'_> {
     pub fn lexer_mut(&mut self) -> &mut Lexer {
         self.state.lexer_mut()
     }
@@ -2460,7 +2457,7 @@ impl<'a> ParserRecognizer<'a> {
 }
 
 pub trait BiasComputer: Send + Sync {
-    fn compute_bias<'a>(&self, rec: &mut ParserRecognizer<'a>, start: &[u8]) -> SimpleVob;
+    fn compute_bias(&self, rec: &mut ParserRecognizer<'_>, start: &[u8]) -> SimpleVob;
     fn trie(&self) -> &TokTrie;
 }
 
@@ -2475,7 +2472,7 @@ impl DefaultBiasComputer {
 }
 
 impl BiasComputer for DefaultBiasComputer {
-    fn compute_bias<'b>(&self, rec: &mut ParserRecognizer<'b>, start: &[u8]) -> SimpleVob {
+    fn compute_bias(&self, rec: &mut ParserRecognizer<'_>, start: &[u8]) -> SimpleVob {
         let mut set = self.trie().alloc_token_set();
         self.trie().add_bias(rec, &mut set, start);
         set
@@ -2492,7 +2489,7 @@ impl BiasComputer for DefaultBiasComputer {
 // https://github.com/microsoft/llguidance/blob/main/toktrie/README.md
 // and
 // https://github.com/microsoft/llguidance/blob/main/docs/toktrie.md .
-impl<'a> Recognizer for ParserRecognizer<'a> {
+impl Recognizer for ParserRecognizer<'_> {
     #[inline(always)]
     fn pop_bytes(&mut self, num: usize) {
         if ITEM_TRACE {

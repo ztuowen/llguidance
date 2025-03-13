@@ -56,14 +56,14 @@ impl SlicedBiasComputer {
         let mut covered = trie.alloc_token_set();
         let mut idx = 0;
         let mut regexes = regexes.clone();
-        if regexes.len() > 0 {
+        if !regexes.is_empty() {
             regexes.push("".to_string()); // catch-all
         }
 
         for rx_str in regexes {
             let mut tokens = vec![];
             let mut mask = trie.alloc_token_set();
-            if rx_str == "" {
+            if rx_str.is_empty() {
                 for tok_idx in 0..n_vocab {
                     if covered.is_allowed(tok_idx) {
                         tokens.push(vec![]);
@@ -127,7 +127,7 @@ impl SlicedBiasComputer {
             ));
             if include_tokens {
                 for (tok_idx, b) in slice.trie.sorted_tokens() {
-                    if b.len() > 0 {
+                    if !b.is_empty() {
                         s.push_str(&format!(
                             "  tok{}-> {}\n",
                             tok_idx,
@@ -185,7 +185,7 @@ fn compress_trie(trie: &TokTrie, ai: &AlphabetInfo) -> TokTrie {
 }
 
 impl BiasComputer for SlicedBiasComputer {
-    fn compute_bias<'b>(&self, rec: &mut ParserRecognizer<'b>, start: &[u8]) -> SimpleVob {
+    fn compute_bias(&self, rec: &mut ParserRecognizer<'_>, start: &[u8]) -> SimpleVob {
         let mut set = self.trie().alloc_token_set();
         let lexer_state = rec.lexer_state();
         if self.slices.len() > 0
@@ -198,7 +198,7 @@ impl BiasComputer for SlicedBiasComputer {
                 .slices
                 .iter()
                 .map(|slice| {
-                    slice.regex != ""
+                    !slice.regex.is_empty()
                         && rec
                             .lexer_mut()
                             .check_subsume(lexer_state, slice.idx, budget)
@@ -206,7 +206,7 @@ impl BiasComputer for SlicedBiasComputer {
                 })
                 .collect::<Vec<bool>>();
 
-            if slice_matches.iter().all(|&x| x == false) {
+            if slice_matches.iter().all(|&x| !x) {
                 // if nothing matches, just run the full trie
                 self.wildcard_slice.add_bias(rec, &mut set, start);
                 debug!("no slice matches; {} tokens", set.num_set());

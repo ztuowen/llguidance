@@ -231,7 +231,7 @@ impl LlgConstraintInit {
         if self.tokenizer.is_null() {
             bail!("Tokenizer is null");
         }
-        Ok(unsafe { (&*self.tokenizer).to_env() })
+        Ok(unsafe { (*self.tokenizer).to_env() })
     }
 
     pub fn build_parser(
