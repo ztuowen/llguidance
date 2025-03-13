@@ -22,7 +22,9 @@ fn consume(parser: &mut TokenParser, tok: u32) {
 }
 
 fn lark_ok(lark: &str) {
-    if let Err(e) = make_parser(lark, false) { panic!("unexpected error: {}, grm:\n{}", e, lark) }
+    if let Err(e) = make_parser(lark, false) {
+        panic!("unexpected error: {}, grm:\n{}", e, lark)
+    }
 }
 
 fn lark_err_test(lark: &str, err: &str) {

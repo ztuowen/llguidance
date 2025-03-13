@@ -269,9 +269,7 @@ mod test {
         )
         .unwrap();
         let mut regex = to_regex(builder, expr);
-        assert!(
-            regex.is_match("The quick brown fox jumps over the lazy dog.")
-        );
+        assert!(regex.is_match("The quick brown fox jumps over the lazy dog."));
         assert!(regex.is_match("The quick brown fox"));
         assert!(regex.is_match("he quick brow"));
         assert!(regex.is_match("fox jump"));
@@ -288,9 +286,7 @@ mod test {
         )
         .unwrap();
         let mut regex = to_regex(builder, expr);
-        assert!(
-            regex.is_match("빠른 갈색 여우가 게으른 개를 뛰어넘었다.")
-        );
+        assert!(regex.is_match("빠른 갈색 여우가 게으른 개를 뛰어넘었다."));
         assert!(regex.is_match("빠른 갈색 여우가 게으른"));
         assert!(regex.is_match("른 갈색 여우"));
         assert!(regex.is_match("여우가 게으"));
@@ -307,9 +303,7 @@ mod test {
         )
         .unwrap();
         let mut regex = to_regex(builder, expr);
-        assert!(
-            regex.is_match("The quick brown fox jumps over the lazy dog.")
-        );
+        assert!(regex.is_match("The quick brown fox jumps over the lazy dog."));
         assert!(regex.is_match("The quick brown fox"));
         assert!(!regex.is_match("he quick brow"));
         assert!(!regex.is_match("fox jump"));
@@ -326,9 +320,7 @@ mod test {
         )
         .unwrap();
         let mut regex = to_regex(builder, expr);
-        assert!(
-            regex.is_match("빠른 갈색 여우가 게으른 개를 뛰어넘었다.")
-        );
+        assert!(regex.is_match("빠른 갈색 여우가 게으른 개를 뛰어넘었다."));
         assert!(regex.is_match("빠른 갈색 여우가 게으른"));
         assert!(!regex.is_match("른 갈색 여우"));
         assert!(!regex.is_match("여우가 게으"));

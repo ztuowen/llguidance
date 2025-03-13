@@ -114,7 +114,8 @@ pub fn token_bytes_from_tokenizer_json(tokenizer_json: &Value) -> Result<Vec<Vec
                 .chars()
                 .map(|c| {
                     char_map
-                        .get(&c).copied()
+                        .get(&c)
+                        .copied()
                         .ok_or_else(|| anyhow!("missing char: {}", c))
                 })
                 .collect();

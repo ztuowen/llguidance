@@ -53,8 +53,7 @@ pub enum Token {
     EOF,
 }
 
-#[derive(Debug, Clone)]
-#[derive(Default)]
+#[derive(Debug, Clone, Default)]
 pub enum LexemeValue {
     #[default]
     None,
@@ -62,7 +61,6 @@ pub enum LexemeValue {
     Json(Value),
     Regex(RegexExt),
 }
-
 
 impl LexemeValue {
     pub fn get_string(&self) -> Result<String> {

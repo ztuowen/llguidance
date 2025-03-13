@@ -639,7 +639,9 @@ impl TestEnv {
         parser.start_without_prompt();
 
         let mut ref_parser = ref_parser.map(|p| p.deep_clone());
-        if let Some(p) = ref_parser.as_mut() { p.start_without_prompt() }
+        if let Some(p) = ref_parser.as_mut() {
+            p.start_without_prompt()
+        }
 
         let r = self.run_llg_test_inner(stats, &mut parser, ref_parser, t);
 
@@ -1206,15 +1208,11 @@ fn main() {
 
         if num_err > 0 {
             eprintln!("FAILED: {} errors, {} warnings", num_err, num_warn);
-            eprintln!(
-                "MISMATCH: tmp/llg_sem_results.json {}", expected_file_name
-            );
+            eprintln!("MISMATCH: tmp/llg_sem_results.json {}", expected_file_name);
             std::process::exit(1);
         } else if num_warn > 0 {
             eprintln!("SOFT FAIL: {} warnings", num_warn);
-            eprintln!(
-                "TRY: cp tmp/llg_sem_results.json {}", expected_file_name
-            );
+            eprintln!("TRY: cp tmp/llg_sem_results.json {}", expected_file_name);
             std::process::exit(1);
         } else {
             eprintln!("PASSED");

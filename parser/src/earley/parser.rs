@@ -1528,7 +1528,9 @@ impl ParserState {
         //let t0 = Instant::now();
         let lex_state = self.lexer_state().lexer_state;
         let quick_res = self.lexer_mut().next_byte(lex_state);
-        if let NextByte::ForcedByte(b) = quick_res { return Some(b) }
+        if let NextByte::ForcedByte(b) = quick_res {
+            return Some(b);
+        }
 
         let slow_res = self.run_speculative("forced_byte", |state| {
             let mut r = ParserRecognizer { state };

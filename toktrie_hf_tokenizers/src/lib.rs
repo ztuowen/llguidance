@@ -53,7 +53,9 @@ impl ByteTokenizer {
         } else {
             let mut name2 = name.to_string();
             let mut args = FromPretrainedParameters::default();
-            if let Some(s) = strip_suffix("@", &mut name2) { args.revision = s }
+            if let Some(s) = strip_suffix("@", &mut name2) {
+                args.revision = s
+            }
             Tokenizer::from_pretrained(name2, Some(args))
         };
 
@@ -171,7 +173,8 @@ impl ByteTokenizer {
                         .chars()
                         .map(|c| {
                             char_map
-                                .get(&c).copied()
+                                .get(&c)
+                                .copied()
                                 .ok_or_else(|| anyhow!("missing char: {}", c))
                         })
                         .collect();
