@@ -522,7 +522,7 @@ pub extern "C" fn llg_get_temperature(cc: &LlgConstraint) -> f32 {
 pub extern "C" fn llg_is_stopped(cc: &LlgConstraint) -> bool {
     cc.constraint
         .as_ref()
-        .map_or(true, |c| c.step_result().is_stop())
+        .is_none_or(|c| c.step_result().is_stop())
 }
 
 /// Compute mask for the next token sampling

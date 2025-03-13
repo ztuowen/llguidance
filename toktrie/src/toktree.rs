@@ -764,10 +764,7 @@ impl TokTrie {
 
     pub fn child_at_bytes<'a>(&'a self, mut n: &'a TrieNode, bytes: &[u8]) -> Option<&'a TrieNode> {
         for &byte in bytes {
-            n = match self.child_at_byte(n, byte) {
-                Some(n) => n,
-                None => return None,
-            }
+            n = self.child_at_byte(n, byte)?
         }
         Some(n)
     }
