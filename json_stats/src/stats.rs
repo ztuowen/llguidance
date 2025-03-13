@@ -153,8 +153,8 @@ impl SchemaStats {
     fn has_type(&self, obj: &Value, t: &str) -> bool {
         if let Some(types) = obj["type"].as_array() {
             types.iter().any(|v| v == t)
-        } else if let Some(t) = obj["type"].as_str() {
-            t == t
+        } else if let Some(tp) = obj["type"].as_str() {
+            t == tp
         } else {
             false
         }
