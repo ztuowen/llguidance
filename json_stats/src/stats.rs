@@ -36,7 +36,7 @@ fn is_directly_nested_schema(kw: &str) -> bool {
 }
 
 fn is_map_to_schema(kw: &str) -> bool {
-    matches!(kw, "properties" | "patternProperties" | "dependencies")
+    matches!(kw, "properties" | "patternProperties")
 }
 
 fn is_schema_kw(kw: &str) -> bool {
