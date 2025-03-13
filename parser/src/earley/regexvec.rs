@@ -339,7 +339,6 @@ impl RegexVec {
         mut budget: u64,
     ) -> Result<bool> {
         let budget0 = budget;
-        let t0 = crate::Instant::now();
         assert!(self.subsume_possible(state));
         let small = self.get_rx(lexeme_idx);
         let mut res = false;
@@ -364,10 +363,6 @@ impl RegexVec {
             }
             let cost = self.exprs.cost() - c0;
             budget = budget.saturating_sub(cost);
-        }
-        let cost = budget0 - budget;
-        if false && cost > 10 {
-            println!("check_subsume: {}/{} {:?}", cost, budget0, t0.elapsed());
         }
         Ok(res)
     }

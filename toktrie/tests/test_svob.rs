@@ -9,6 +9,7 @@ fn bools_to_bin_string(bits: &[bool]) -> String {
 #[test]
 fn test_allow_range_empty() {
     let mut v = SimpleVob::alloc(32);
+    #[allow(clippy::reversed_empty_ranges)]
     v.allow_range(10..=9); // no effect
     assert_eq!(v.num_set(), 0);
     assert_eq!(v.to_bin_string(), "00000000000000000000000000000000");
