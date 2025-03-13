@@ -24,7 +24,7 @@ fn check_grammar(
     output: &[&str],
     temp: f32,
 ) -> Constraint {
-    let mut rnd = XorShift::from_str(&serde_json::to_string(&grammar).unwrap());
+    let mut rnd = XorShift::new_str(&serde_json::to_string(&grammar).unwrap());
 
     let parser = factory.create_parser(grammar).unwrap();
     let can_rollback = parser.parser.grammar().lexer_spec().can_rollback();
@@ -319,7 +319,7 @@ fn tokenize_trace(tok_env: &TokEnv, s: &str) -> Vec<(bool, TokenId)> {
         } else if let Some(t) = trie.get_special_token(word) {
             result.push((is_allowed, t));
         } else if word.starts_with("<[") && word.ends_with("]>") {
-            let t = u32::from_str_radix(&word[2..word.len() - 2], 10).unwrap();
+            let t = word[2..word.len() - 2].parse::<u32>().unwrap();
             assert!(t < trie.vocab_size() as u32);
             result.push((is_allowed, t));
         } else {

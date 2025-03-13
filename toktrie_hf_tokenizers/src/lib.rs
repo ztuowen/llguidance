@@ -17,10 +17,7 @@ pub struct ByteTokenizer {
 // useful when debugging this: https://www.cogsci.ed.ac.uk/~richard/utf-8.cgi
 
 fn is_self_mapped(c: char) -> bool {
-    match c {
-        '!'..='~' | '\u{00A1}'..='\u{00AC}' | '\u{00AE}'..='\u{00FF}' => true,
-        _ => false,
-    }
+    matches!(c, '!'..='~' | '\u{00A1}'..='\u{00AC}' | '\u{00AE}'..='\u{00FF}')
 }
 
 fn build_char_map() -> HashMap<char, u8> {

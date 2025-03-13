@@ -48,19 +48,18 @@ impl SlicedBiasComputer {
         Self::json_slices()
     }
 
-    pub fn new(tok_env: &TokEnv, regexes: &Vec<String>) -> Result<Self> {
+    pub fn new(tok_env: &TokEnv, regexes: &[String]) -> Result<Self> {
         let mut slices = vec![];
 
         let trie = tok_env.tok_trie();
         let n_vocab = trie.vocab_size() as TokenId;
         let mut covered = trie.alloc_token_set();
-        let mut idx = 0;
-        let mut regexes = regexes.clone();
+        let mut regexes = regexes.to_vec();
         if !regexes.is_empty() {
             regexes.push("".to_string()); // catch-all
         }
 
-        for rx_str in regexes {
+        for (idx, rx_str) in regexes.into_iter().enumerate() {
             let mut tokens = vec![];
             let mut mask = trie.alloc_token_set();
             if rx_str.is_empty() {
@@ -99,8 +98,6 @@ impl SlicedBiasComputer {
             };
 
             slices.push(entry);
-
-            idx += 1;
         }
 
         let r = SlicedBiasComputer {

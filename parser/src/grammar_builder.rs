@@ -52,7 +52,7 @@ pub struct RegexBuilder {
 
 pub type RegexId = derivre::ExprRef;
 
-fn map_ids(nodes: &Vec<RegexId>) -> Vec<RegexAst> {
+fn map_ids(nodes: &[RegexId]) -> Vec<RegexAst> {
     nodes.iter().map(|n| RegexAst::ExprRef(*n)).collect()
 }
 

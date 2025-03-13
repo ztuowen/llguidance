@@ -102,7 +102,7 @@ pub fn parse_numeric_token(s: &[u8]) -> Option<(usize, TokenId)> {
         }
         let inner_bytes = &s[1..spec_len];
         if let Ok(inner_str) = std::str::from_utf8(inner_bytes) {
-            if let Ok(id) = u32::from_str_radix(inner_str, 10) {
+            if let Ok(id) = inner_str.parse::<u32>() {
                 return Some((spec_len + 1, id as TokenId));
             }
         }
@@ -275,7 +275,7 @@ impl TokTrie {
     // see https://github.com/microsoft/llguidance/blob/main/docs/special_tokens.md
     pub const SPECIAL_TOKEN_MARKER: u8 = 0xff;
 
-    pub fn from(info: &TokRxInfo, words: &Vec<Vec<u8>>) -> Self {
+    pub fn from(info: &TokRxInfo, words: &[Vec<u8>]) -> Self {
         let mut trie = TrieHash::new(0xff);
         let mut token_offsets = Vec::new();
         let mut token_data = Vec::new();
@@ -492,8 +492,7 @@ impl TokTrie {
     }
 
     pub fn decode(&self, tokens: &[TokenId]) -> Vec<u8> {
-        let mut res = Vec::new();
-        res.reserve(tokens.len() * 6 + 32); // approximately
+        let mut res = Vec::with_capacity(tokens.len() * 6 + 32); // approximately
         for &tok in tokens {
             let t = self.token(tok);
             if t.is_empty() {
@@ -508,16 +507,14 @@ impl TokTrie {
     }
 
     pub fn decode_as_special(&self, tok: TokenId) -> Vec<u8> {
-        let mut res = Vec::new();
-        res.reserve(9);
+        let mut res = Vec::with_capacity(9);
         res.push(TokTrie::SPECIAL_TOKEN_MARKER);
         res.extend_from_slice(format!("[{}]", tok).as_bytes());
         res
     }
 
     pub fn decode_raw(&self, tokens: &[TokenId]) -> Vec<u8> {
-        let mut res = Vec::new();
-        res.reserve(tokens.len() * 6 + 32); // approximately
+        let mut res = Vec::with_capacity(tokens.len() * 6 + 32); // approximately
         for &tok in tokens {
             let t = self.token(tok);
             if t.is_empty() || t[0] == TokTrie::SPECIAL_TOKEN_MARKER {
@@ -709,10 +706,8 @@ impl TokTrie {
         &self.nodes[0]
     }
 
-    pub fn check_against(&self, tokens: &Vec<Vec<u8>>) {
-        let vocab_size = tokens.len();
-        for idx in 0..vocab_size {
-            let bytes = &tokens[idx];
+    pub fn check_against(&self, tokens: &[Vec<u8>]) {
+        for (idx, bytes) in tokens.iter().enumerate() {
             let tid = idx as TokenId;
             assert!(bytes == self.token(tid));
             let root = self.root();
@@ -745,8 +740,8 @@ impl TokTrie {
         let mut r = Vec::new();
         for i in 0..bytes.len() {
             let mut n = self.root();
-            for j in i..bytes.len() {
-                n = match self.child_at_byte(n, bytes[j]) {
+            for &b in &bytes[i..] {
+                n = match self.child_at_byte(n, b) {
                     Some(n) => n,
                     None => break,
                 };

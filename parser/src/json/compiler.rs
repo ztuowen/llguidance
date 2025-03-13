@@ -188,7 +188,7 @@ impl Compiler {
         }
     }
 
-    fn process_one_of(&mut self, options: &Vec<Schema>) -> Result<NodeRef> {
+    fn process_one_of(&mut self, options: &[Schema]) -> Result<NodeRef> {
         if self.options.coerce_one_of {
             self.process_any_of(options)
         } else {
@@ -209,7 +209,7 @@ impl Compiler {
         Ok(())
     }
 
-    fn process_any_of(&mut self, options: &Vec<Schema>) -> Result<NodeRef> {
+    fn process_any_of(&mut self, options: &[Schema]) -> Result<NodeRef> {
         let mut regex_nodes = vec![];
         let mut cfg_nodes = vec![];
         let mut errors = vec![];
@@ -460,6 +460,7 @@ impl Compiler {
         Ok(self.builder.join(&[opener, inner, closer]))
     }
 
+    #[allow(clippy::type_complexity)]
     fn ordered_sequence<'a>(
         &mut self,
         items: &'a [(NodeRef, bool)],
@@ -766,9 +767,11 @@ impl Compiler {
             }
         }
 
-        if max_items.is_none() && additional_item_grm.is_some() {
-            // Add an infinite tail of items
-            optional_items.push(self.sequence(additional_item_grm.unwrap()));
+        if max_items.is_none() {
+            if let Some(additional_item) = additional_item_grm {
+                // Add an infinite tail of items
+                optional_items.push(self.sequence(additional_item));
+            }
         }
 
         let mut grammars: Vec<NodeRef> = vec![self.builder.string("[")];

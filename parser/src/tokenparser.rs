@@ -663,7 +663,7 @@ impl TokenParser {
         (Vec::new(), token_prefix)
     }
 
-    fn compute_bias(&mut self, token_prefix: &Vec<u8>) -> SimpleVob {
+    fn compute_bias(&mut self, token_prefix: &[u8]) -> SimpleVob {
         let pre_stats = self.parser.stats().clone();
         let set = self.parser.compute_bias(&*self.bias_computer, token_prefix);
         let p_stats = self.parser.stats().delta(&pre_stats);
@@ -673,7 +673,7 @@ impl TokenParser {
         set
     }
 
-    fn log_final(&mut self, token_prefix: &Vec<u8>, allowed_tokens: &SimpleVob) {
+    fn log_final(&mut self, token_prefix: &[u8], allowed_tokens: &SimpleVob) {
         infoln!(
             self,
             "step-stats: {}us; {} lex fuel; {} items; {}",

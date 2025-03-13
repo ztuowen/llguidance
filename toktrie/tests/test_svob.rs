@@ -1,3 +1,5 @@
+#![allow(clippy::needless_range_loop)]
+
 use std::panic::AssertUnwindSafe;
 
 use toktrie::SimpleVob;
@@ -45,6 +47,7 @@ fn test_allow_range_multiple_words() {
     // set range [10..85], spanning multiple 32-bit words
     v.allow_range(10..=84);
     let mut bits = vec![false; 96];
+    #[allow(clippy::needless_range_loop)]
     for i in 10..85 {
         bits[i] = true;
     }

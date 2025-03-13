@@ -66,13 +66,13 @@ impl Parser {
         } else {
             None
         };
-        let (name, pin_terminals) = if name.starts_with("!") {
-            (name[1..].to_string(), true)
+        let (name, pin_terminals) = if let Some(name) = name.strip_prefix("!") {
+            (name.to_string(), true)
         } else {
             (name, false)
         };
-        let (name, cond_inline) = if name.starts_with("?") {
-            (name[1..].to_string(), true)
+        let (name, cond_inline) = if let Some(name) = name.strip_prefix("?") {
+            (name.to_string(), true)
         } else {
             (name, false)
         };
@@ -399,8 +399,8 @@ impl Parser {
     }
 
     fn parse_string(&self, s: &str) -> Result<(String, String)> {
-        let (inner, flags) = if s.ends_with('i') {
-            (&s[..s.len() - 1], "i")
+        let (inner, flags) = if let Some(s) = s.strip_suffix('i') {
+            (s, "i")
         } else {
             (s, "")
         };

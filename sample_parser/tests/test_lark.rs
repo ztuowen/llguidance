@@ -44,8 +44,8 @@ fn lark_err_test(lark: &str, err: &str) {
 
 fn lark_str_test(lark: &str, should_accept: bool, input: &str, quiet: bool) {
     let trie = get_tok_env().tok_trie();
-    let (final_reject, input) = if input.starts_with("FINAL_REJECT:") {
-        (true, &input[13..])
+    let (final_reject, input) = if let Some(input) = input.strip_prefix("FINAL_REJECT:") {
+        (true, input)
     } else {
         (false, input)
     };

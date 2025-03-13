@@ -298,7 +298,7 @@ fn json_sum(curr: &mut Value, v: &Value) {
     }
 }
 
-fn log_fraction_plot(times: &mut Vec<usize>) -> String {
+fn log_fraction_plot(times: &mut [usize]) -> String {
     times.sort();
     let mut cutoff = 1;
     let mult = 1.3;
@@ -528,7 +528,7 @@ impl TestEnv {
         t: &JsonTestSequence,
     ) -> Result<()> {
         let dstr = serde_json::to_string(&t.data).unwrap();
-        let mut rnd = XorShift::from_str(&dstr);
+        let mut rnd = XorShift::new_str(&dstr);
         let tokens = self.tok_env.tokenize(&dstr);
         let trie = self.tok_env.tok_trie();
         let masks = self.cli.llg_masks;
@@ -655,10 +655,14 @@ impl TestEnv {
     }
 
     fn run_llg_compile(&self, id: &str, test_file: &JsonTest) -> LlgResult {
-        let mut opts = JsonCompileOptions::default();
-        opts.whitespace_flexible = !self.cli.compact;
-        let mut res = LlgResult::default();
-        res.id = id.to_string();
+        let opts = JsonCompileOptions {
+            whitespace_flexible: !self.cli.compact,
+            ..Default::default()
+        };
+        let mut res = LlgResult {
+            id: id.to_string(),
+            ..Default::default()
+        };
 
         let all_tests = test_file
             .tests
@@ -676,11 +680,12 @@ impl TestEnv {
         }
 
         let t0 = std::time::Instant::now();
-        let schema = if self.cli.ignore_schema {
+        let mut schema = if self.cli.ignore_schema {
             json!({"type": "object"})
         } else {
             test_file.schema.clone()
         };
+        opts.apply_to(&mut schema);
         let g_init = GrammarInit::Serialized(TopLevelGrammar::from_json_schema(schema));
         let g_init = g_init.to_internal(None, self.factory.limits().clone());
 
@@ -770,9 +775,11 @@ impl TestEnv {
         let mut test_file: JsonTest = serde_json::from_str(&schema_file)
             .unwrap_or_else(|_| panic!("Invalid JSON in schema file {}", file_name));
 
-        let mut stats = SchemaRes::default();
-        stats.file_name = file_name.clone();
-        stats.full_size = serde_json::to_string(&test_file.schema).unwrap().len();
+        let mut stats = SchemaRes {
+            file_name: file_name.clone(),
+            full_size: serde_json::to_string(&test_file.schema).unwrap().len(),
+            ..Default::default()
+        };
 
         let uuid_regex = regex::Regex::new(r"^(?P<time_low>[0-9a-fA-F]{8})-(?P<time_mid>[0-9a-fA-F]{4})-(?P<time_high_and_version>[0-9a-fA-F]{4})-(?P<clock_seq_and_reserved>[0-9a-fA-F]{2})(?P<clock_seq_low>[0-9a-fA-F]{2})-(?P<node>[0-9a-fA-F]{12})$"
     ).unwrap();
@@ -950,7 +957,7 @@ fn main() {
     // factory.set_stderr_log_level(2);
     // factory.limits_mut().step_lexer_fuel = 10_000_000;
 
-    let mut ref_factory = ParserFactory::new(&tok_env, caps.clone(), &vec![]).unwrap();
+    let mut ref_factory = ParserFactory::new(&tok_env, caps.clone(), &[]).unwrap();
     ref_factory.quiet();
 
     let factory = Arc::new(factory);
@@ -1172,6 +1179,7 @@ fn main() {
         for (id, r) in llg_sem_results.iter() {
             if let Some(exp) = expected_map.remove(id) {
                 if r != &exp {
+                    #[allow(clippy::comparison_chain)]
                     let status = if r.error_badness() < exp.error_badness() {
                         num_err += 1;
                         "improvement"

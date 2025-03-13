@@ -93,12 +93,13 @@ impl XorShift {
         XorShift { seed }
     }
 
-    pub fn from_str(s: &str) -> Self {
+    pub fn new_str(s: &str) -> Self {
         XorShift {
             seed: XorShift::fnv1a_32(s.as_bytes()),
         }
     }
 
+    #[allow(clippy::should_implement_trait)]
     pub fn next(&mut self) -> u32 {
         let mut x = self.seed;
         x ^= x << 13;
@@ -110,7 +111,7 @@ impl XorShift {
 
     pub fn from_range(&mut self, r: Range<usize>) -> usize {
         assert!(r.start < r.end);
-        assert!(r.end < std::u32::MAX as usize);
+        assert!(r.end < u32::MAX as usize);
         r.start + (self.next() as usize) % (r.end - r.start)
     }
 
@@ -628,8 +629,8 @@ impl ParserState {
 
         // Initialize the Earley table with the predictions in
         // row 0.
-        for rule in r.grammar.rules_of(start).to_vec() {
-            r.scratch.add_unique(Item::new(rule, 0), 0, "init");
+        for rule in r.grammar.rules_of(start) {
+            r.scratch.add_unique(Item::new(*rule, 0), 0, "init");
         }
         debug!("initial push");
         let _ = r.push_row(0, &Lexeme::bogus());
@@ -1344,7 +1345,7 @@ impl ParserState {
         debug!("special_pre_lexeme: {:?}", String::from_utf8_lossy(&bytes));
         // we get here "FF [ 1 2 3 4", no final ']'
         let bytes = &bytes[2..bytes.len()];
-        if let Ok(tok_id) = u32::from_str_radix(std::str::from_utf8(bytes).unwrap(), 10) {
+        if let Ok(tok_id) = std::str::from_utf8(bytes).unwrap().parse::<u32>() {
             let idx = specs.iter().position(|spec| {
                 spec.token_ranges
                     .iter()
@@ -2123,8 +2124,8 @@ impl ParserState {
     #[inline(always)]
     fn mk_lexeme(&self, byte: Option<u8>, pre_lexeme: PreLexeme) -> Lexeme {
         let mut bytes = self.curr_row_bytes();
-        if byte.is_some() {
-            bytes.push(byte.unwrap());
+        if let Some(byte) = byte {
+            bytes.push(byte);
         }
 
         let (hidden, is_suffix) = self.lexer().lexeme_props(pre_lexeme.idx);
@@ -2321,7 +2322,6 @@ impl ParserState {
     // The new lexer state will be an initial lexer states when the lexing
     // is lazy.  If the lexing was greedy, it will be an initial lexer state
     // advanced to the byte which produced the greedy lexeme.
-
     // This is never inlined anyways, so better make it formal
     #[inline(never)]
     fn advance_parser(&mut self, pre_lexeme: PreLexeme) -> bool {

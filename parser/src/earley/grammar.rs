@@ -2,6 +2,7 @@ use super::lexerspec::{LexemeClass, LexemeIdx, LexerSpec};
 use crate::api::{GenGrammarOptions, GrammarId, NodeProps};
 use crate::HashMap;
 use anyhow::{bail, ensure, Result};
+use std::fmt::Display;
 use std::{fmt::Debug, hash::Hash};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -73,34 +74,27 @@ impl SymbolProps {
             is_start: false,
         }
     }
+}
 
-    pub fn to_string(&self) -> String {
-        let props = self;
-        let mut outp = String::new();
-
-        if props.capture_name.is_some() {
-            outp.push_str(" CAPTURE");
+impl Display for SymbolProps {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.capture_name.is_some() {
+            write!(f, " CAPTURE")?;
         }
-
-        if props.stop_capture_name.is_some() {
-            outp.push_str(
-                format!(
-                    " STOP-CAPTURE={}",
-                    props.stop_capture_name.as_ref().unwrap()
-                )
-                .as_str(),
-            );
+        if self.stop_capture_name.is_some() {
+            write!(
+                f,
+                " STOP-CAPTURE={}",
+                self.stop_capture_name.as_ref().unwrap()
+            )?;
         }
-
-        if props.max_tokens < 10000 {
-            outp.push_str(format!(" max_tokens={}", props.max_tokens).as_str());
+        if self.max_tokens < 10000 {
+            write!(f, " max_tokens={}", self.max_tokens)?;
         }
-
-        if props.temperature != 0.0 {
-            outp.push_str(format!(" temp={:.2}", props.temperature).as_str());
+        if self.temperature != 0.0 {
+            write!(f, " temp={:.2}", self.temperature)?;
         }
-
-        outp
+        Ok(())
     }
 }
 
@@ -568,13 +562,7 @@ impl Grammar {
         for sym in &self.symbols {
             if sym.rules.is_empty() {
                 if sym.props.is_special() {
-                    writeln!(
-                        f,
-                        "{:15} ⇦ {:?}  {}",
-                        sym.name,
-                        sym.lexeme,
-                        sym.props.to_string()
-                    )?;
+                    writeln!(f, "{:15} ⇦ {:?}  {}", sym.name, sym.lexeme, sym.props)?;
                 }
             } else {
                 for (idx, rule) in sym.rules.iter().enumerate() {
@@ -956,7 +944,7 @@ fn rule_to_string(
     } else if let Some(dot) = dot {
         rhs.insert(dot, "•".to_string());
     }
-    format!("{:15} ⇦ {}  {}", lhs, rhs.join(" "), props.to_string())
+    format!("{:15} ⇦ {}  {}", lhs, rhs.join(" "), props)
 }
 
 fn uf_find(map: &mut [Option<SymIdx>], e: SymIdx) -> SymIdx {

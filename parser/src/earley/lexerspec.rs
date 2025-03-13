@@ -262,10 +262,9 @@ impl LexerSpec {
 
         if !self.has_stop && !spec.is_suffix {
             self.has_stop = match &spec.rx {
-                RegexAst::Concat(parts) => parts.iter().any(|part| match part {
-                    RegexAst::LookAhead(_) => true,
-                    _ => false,
-                }),
+                RegexAst::Concat(parts) => parts
+                    .iter()
+                    .any(|part| matches!(part, RegexAst::LookAhead(_))),
                 _ => false,
             };
             if spec.ends_at_eos {
@@ -390,7 +389,7 @@ impl LexerSpec {
         })
     }
 
-    pub fn add_extra_lexemes(&mut self, extra_lexemes: &Vec<String>) {
+    pub fn add_extra_lexemes(&mut self, extra_lexemes: &[String]) {
         assert!(self.num_extra_lexemes == 0);
         self.num_extra_lexemes = extra_lexemes.len();
         for (idx, added) in extra_lexemes.iter().enumerate() {
@@ -516,10 +515,7 @@ impl Lexeme {
     }
 
     pub fn is_bogus(&self) -> bool {
-        match self.idx {
-            MatchingLexemesIdx::Single(LexemeIdx(0)) if self.bytes.is_empty() => true,
-            _ => false,
-        }
+        self.bytes.is_empty() && matches!(self.idx, MatchingLexemesIdx::Single(LexemeIdx(0)))
     }
 
     pub fn is_suffix(&self) -> bool {

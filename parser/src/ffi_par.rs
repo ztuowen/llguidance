@@ -57,6 +57,7 @@ pub(crate) fn par_compute_mask(
         rayon::spawn(move || {
             par_compute_mask_inner(constraints);
             cb(ptr.user_data);
+            #[allow(clippy::drop_non_drop)]
             drop(ptr);
         });
     } else {

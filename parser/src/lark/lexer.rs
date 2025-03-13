@@ -16,6 +16,8 @@ use crate::{
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(clippy::enum_variant_names)]
+#[allow(clippy::upper_case_acronyms)]
 pub enum Token {
     KwIgnore,
     KwImport,

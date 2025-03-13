@@ -503,6 +503,7 @@ impl Compiler {
             }
 
             let inner = self.do_expansions(rule.expansions)?;
+            #[allow(clippy::assertions_on_constants)]
             if let Some(max_tokens) = rule.max_tokens {
                 assert!(false, "max_tokens handled above for now");
                 self.builder.join_props(
